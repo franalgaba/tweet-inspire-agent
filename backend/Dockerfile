@@ -7,14 +7,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
 # Copy dependency files first for better layer caching
-# Railway build context is repo root, so use backend/ paths
-COPY backend/pyproject.toml backend/uv.lock ./
+COPY pyproject.toml uv.lock ./
 
 # Install dependencies (without cache mount for Railway compatibility)
 RUN uv sync --locked --no-install-project
 
-# Copy the rest of the application code from backend directory
-COPY backend/ /app
+# Copy the rest of the application code
+COPY . /app
 
 # Install the project itself
 RUN uv sync --locked
