@@ -1,23 +1,28 @@
 FROM python:3.12-slim
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Install uv.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
+# Copy dependency files first for better layer caching
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies using uv
-RUN uv sync --frozen --no-dev
+# Install dependencies using cache mount for faster builds
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-install-project
 
-# Copy application code
-COPY . .
+# Copy the rest of the application code
+COPY . /app
+
+# Install the project itself
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked
 
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uv", "run", "python", "-m", "twitter_agent.api"]
+# Run the application using the venv
+CMD ["/app/.venv/bin/python", "-m", "twitter_agent.api"]
 
