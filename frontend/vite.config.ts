@@ -31,6 +31,7 @@ export default defineConfig({
   preview: {
     port: 3000,
     host: true,
+    allowedHosts: ['localhost', '.railway.app'],
   },
 })
 
