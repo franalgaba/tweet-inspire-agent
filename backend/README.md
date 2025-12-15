@@ -263,29 +263,32 @@ uv run pytest --cov=twitter_agent
 
 ## Deployment
 
-### Railway
+### Railway Monorepo Deployment
 
-The backend is configured for Railway deployment:
+This project is deployed as part of a monorepo. See [RAILWAY_DEPLOYMENT.md](../RAILWAY_DEPLOYMENT.md) for complete deployment instructions.
 
-1. **Set root directory** to `backend/` in Railway dashboard
-2. **Set environment variables** (see Configuration section)
-3. **Deploy** - Railway will automatically build and deploy
+**Quick setup**:
+1. Create Railway project and add this repository
+2. Create backend service with **root directory** set to `backend/`
+3. Set environment variables (see Configuration section below)
+4. Generate public domain
 
 The `railway.json` config uses:
 - **Builder**: NIXPACKS (auto-detects Python)
 - **Start Command**: `uv run python -m twitter_agent.api`
+- **Watch Paths**: `backend/**` (prevents rebuilds on frontend changes)
 
 ### Environment Variables for Railway
 
-Set these in your Railway service:
+Set these in your Railway backend service:
 
-- `TWITTER_API_KEY`
-- `PERPLEXITY_API_KEY`
-- `OLLAMA_API_KEY`
-- `OLLAMA_BASE_URL` (set to `https://ollama.com` for cloud)
-- `OLLAMA_MODEL` (e.g., `gpt-oss:120b`)
-- `FRONTEND_URL` (your frontend domain)
-- `ALLOW_ALL_ORIGINS` (set to `false` for production)
+- `TWITTER_API_KEY` - TwitterAPI.io API key
+- `PERPLEXITY_API_KEY` - Perplexity API key
+- `OLLAMA_API_KEY` - Ollama Cloud API key
+- `OLLAMA_BASE_URL` - Set to `https://ollama.com` for cloud
+- `OLLAMA_MODEL` - Model name (e.g., `gpt-oss:120b`)
+- `FRONTEND_URL` - Your frontend domain (set after frontend deploys)
+- `ALLOW_ALL_ORIGINS` - Set to `false` for production
 
 ## CORS Configuration
 
