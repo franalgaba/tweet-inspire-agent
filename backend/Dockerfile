@@ -9,16 +9,14 @@ WORKDIR /app
 # Copy dependency files first for better layer caching
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies using cache mount for faster builds
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project
+# Install dependencies (without cache mount for Railway compatibility)
+RUN uv sync --locked --no-install-project
 
 # Copy the rest of the application code
 COPY . /app
 
 # Install the project itself
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked
+RUN uv sync --locked
 
 # Expose port
 EXPOSE 8000
