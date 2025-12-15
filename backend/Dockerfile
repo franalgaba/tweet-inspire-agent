@@ -21,6 +21,7 @@ RUN uv sync --locked
 # Expose port
 EXPOSE 8000
 
-# Run the application using the venv
-CMD ["/app/.venv/bin/python", "-m", "twitter_agent.api"]
+# Run the application using uvicorn with dual-stack binding for Railway
+# Uses :: to bind to both IPv4 and IPv6 per Railway docs
+CMD ["/app/.venv/bin/uvicorn", "twitter_agent.api.main:app", "--host", "::", "--port", "8000"]
 
