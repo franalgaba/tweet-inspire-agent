@@ -78,4 +78,9 @@ def run_server(host: str = "0.0.0.0", port: int = 8000):
     """Run the web server."""
     import uvicorn
 
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        timeout_keep_alive=360,  # 6 minutes to support long-running operations
+    )

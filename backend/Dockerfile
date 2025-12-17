@@ -23,5 +23,6 @@ EXPOSE 8000
 
 # Run the application using uvicorn with dual-stack binding for Railway
 # Uses :: to bind to both IPv4 and IPv6 per Railway docs
-CMD ["/app/.venv/bin/uvicorn", "twitter_agent.api.main:app", "--host", "::", "--port", "8000"]
+# Increased timeouts for long-running operations (up to 5 minutes)
+CMD ["/app/.venv/bin/uvicorn", "twitter_agent.api.main:app", "--host", "::", "--port", "8000", "--timeout-keep-alive", "360"]
 

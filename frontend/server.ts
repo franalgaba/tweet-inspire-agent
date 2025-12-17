@@ -1,5 +1,6 @@
 const API_URL = process.env.API_URL || "http://localhost:8000";
 const PORT = process.env.PORT || 3000;
+const API_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 const server = Bun.serve({
   port: PORT,
@@ -21,13 +22,20 @@ const server = Bun.serve({
       headers.delete("host");
 
       try {
+        // Create timeout controller for long-running requests (up to 5 minutes)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+
         const response = await fetch(backendUrl, {
           method: req.method,
           headers,
           body: req.body,
+          signal: controller.signal,
           // @ts-ignore - Bun supports duplex
           duplex: "half",
         });
+
+        clearTimeout(timeoutId);
 
         return new Response(response.body, {
           status: response.status,
@@ -36,6 +44,18 @@ const server = Bun.serve({
         });
       } catch (error) {
         console.error("Proxy error:", error);
+        
+        // Check if error is due to timeout
+        if (error instanceof Error && error.name === "AbortError") {
+          return new Response(
+            JSON.stringify({ error: "Request timeout - operation took longer than 5 minutes" }),
+            {
+              status: 504,
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+        }
+        
         return new Response(
           JSON.stringify({ error: "Failed to connect to backend" }),
           {
