@@ -3,7 +3,7 @@
 import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -26,7 +26,14 @@ router = APIRouter(prefix="/inspire", tags=["inspire"])
 
 @router.post("", response_model=InspireResponse)
 async def inspire(request: InspireRequest):
-    """Generate content from a tweet URL."""
+    """Generate content from a tweet URL or a topic/prompt."""
+    # Validation
+    if request.content_type != "tweet" and not request.tweet_url:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Tweet URL is required for content type '{request.content_type}'"
+        )
+
     try:
         original_tweet_dict, proposals_dict, research_id = inspire_from_tweet(
             username=request.username,
@@ -38,6 +45,7 @@ async def inspire(request: InspireRequest):
             deep_research=request.deep_research,
             use_full_content=request.use_full_content,
             context=request.context,
+            topic=request.topic,
         )
 
         # Save to history (non-blocking, don't fail if history save fails)
@@ -50,6 +58,7 @@ async def inspire(request: InspireRequest):
                 original_tweet=original_tweet_dict,
                 proposals=proposals_dict,
                 research_id=research_id,
+                prompt=request.topic,
             )
         except Exception as e:
             logger.warning(f"Failed to save to history: {e}")
@@ -58,6 +67,7 @@ async def inspire(request: InspireRequest):
             original_tweet=original_tweet_dict,
             proposals=proposals_dict,
             research_id=research_id,
+            prompt=request.topic,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -79,7 +89,7 @@ async def inspire_stream(request: InspireRequest):
         import queue as std_queue
 
         event_queue = std_queue.Queue()
-        exception_holder = {"error": None}
+        exception_holder: dict[str, Any] = {"error": None}
 
         def run_generator():
             """Run the synchronous generator in a thread."""
@@ -94,6 +104,7 @@ async def inspire_stream(request: InspireRequest):
                     deep_research=request.deep_research,
                     use_full_content=request.use_full_content,
                     context=request.context,
+                    topic=request.topic,
                 ):
                     event_queue.put(event)
                 event_queue.put(None)  # Signal completion
@@ -140,9 +151,10 @@ async def inspire_stream(request: InspireRequest):
                             add_history_entry(
                                 tweet_url=request.tweet_url,
                                 username=request.username,
-                                original_tweet=data.get("original_tweet", {}),
+                                original_tweet=data.get("original_tweet"),
                                 proposals=data.get("proposals", {}),
                                 research_id=data.get("research_id"),
+                                prompt=request.topic,
                             )
                         except Exception as e:
                             logger.warning(f"Failed to save to history: {e}")
@@ -184,4 +196,3 @@ async def regenerate(request: RegenerateRequest):
         raise HTTPException(
             status_code=500, detail=f"Error regenerating content: {str(e)}"
         )
-

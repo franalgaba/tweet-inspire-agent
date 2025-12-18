@@ -16,7 +16,8 @@ import {
   X,
   RotateCcw,
   MessageSquarePlus,
-  Trash2
+  Trash2,
+  Type
 } from 'lucide-react'
 import { api, inspireWithProgress, type InspireRequest, type InspireResponse, type RegenerateRequest, type ProgressEvent } from '~/lib/api'
 import { Button } from '~/components/ui/button'
@@ -62,7 +63,8 @@ function InspirePage() {
   const [formData, setFormData] = useState<InspireRequest>({
     username: '',
     tweet_url: '',
-    content_type: 'all',
+    topic: '',
+    content_type: 'tweet',
     thread_count: 5,
     vibe: '',
     context: '',
@@ -72,7 +74,7 @@ function InspirePage() {
   })
 
   const [regenerateData, setRegenerateData] = useState<Omit<RegenerateRequest, 'research_id'>>({
-    content_type: 'all',
+    content_type: 'tweet',
     thread_count: 5,
     vibe: '',
     context: '',
@@ -114,6 +116,8 @@ function InspirePage() {
       const response = await inspireWithProgress(
         {
           ...formData,
+          tweet_url: formData.content_type === 'tweet' ? (formData.tweet_url || undefined) : formData.tweet_url,
+          topic: formData.content_type === 'tweet' ? (formData.topic || undefined) : undefined,
           vibe: formData.vibe || undefined,
           context: formData.context || undefined,
           profile_file: formData.profile_file || undefined,
@@ -159,16 +163,19 @@ function InspirePage() {
   }, [result?.research_id, formData.thread_count, formData.vibe, formData.context, regenerateMutation])
 
   const displayProposals = regeneratedProposals || result?.proposals
+  const isStandalone = formData.content_type === 'tweet' && !formData.tweet_url
 
   return (
     <div className="space-y-8">
       {/* Hero Input Section */}
       <div className="text-center space-y-4 pt-8">
         <h2 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-          Get inspired by any tweet
+          {formData.content_type === 'tweet' ? 'Create new content' : 'Get inspired by any tweet'}
         </h2>
         <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-          Paste a tweet URL and let AI generate engaging content in your unique voice
+          {formData.content_type === 'tweet' 
+            ? 'Generate engaging standalone tweets in your unique voice' 
+            : 'Paste a tweet URL and let AI generate engaging content in your unique voice'}
         </p>
       </div>
 
@@ -178,24 +185,46 @@ function InspirePage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Primary Inputs */}
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="tweet_url" className="text-base font-medium">
-                  Tweet URL
-                </Label>
-                <div className="relative">
-                  <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="tweet_url"
-                    type="url"
-                    value={formData.tweet_url}
-                    onChange={(e) => setFormData({ ...formData, tweet_url: e.target.value })}
-                    placeholder="https://twitter.com/user/status/123456789..."
-                    className="pl-10 h-12 text-base"
-                    required
-                    disabled={isGenerating}
-                  />
+              {formData.content_type !== 'tweet' ? (
+                <div className="space-y-2">
+                  <Label htmlFor="tweet_url" className="text-base font-medium">
+                    Tweet URL
+                  </Label>
+                  <div className="relative">
+                    <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="tweet_url"
+                      type="url"
+                      value={formData.tweet_url}
+                      onChange={(e) => setFormData({ ...formData, tweet_url: e.target.value })}
+                      placeholder="https://twitter.com/user/status/123456789..."
+                      className="pl-10 h-12 text-base"
+                      required
+                      disabled={isGenerating}
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="topic" className="text-base font-medium">
+                    What do you want to tweet about?
+                  </Label>
+                  <div className="relative">
+                    <Type className="absolute left-3 top-4 h-4 w-4 text-muted-foreground" />
+                    <Textarea
+                      id="topic"
+                      value={formData.topic}
+                      onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+                      placeholder="AI, coding, life updates, tech trends..."
+                      className="pl-10 min-h-[80px] text-base resize-none"
+                      disabled={isGenerating}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Optional: leave empty to generate based on your voice profile and general context.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -226,8 +255,8 @@ function InspirePage() {
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="quote">Quote Tweet</SelectItem>
                       <SelectItem value="tweet">Standalone Tweet</SelectItem>
+                      <SelectItem value="quote">Quote Tweet</SelectItem>
                       <SelectItem value="reply">Reply</SelectItem>
                       <SelectItem value="thread">Thread</SelectItem>
                     </SelectContent>
@@ -301,6 +330,23 @@ function InspirePage() {
                   />
                 </div>
 
+                {formData.content_type === 'tweet' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="tweet_url_optional" className="text-sm">
+                      Reference a tweet (optional)
+                    </Label>
+                    <Input
+                      id="tweet_url_optional"
+                      type="url"
+                      value={formData.tweet_url}
+                      onChange={(e) => setFormData({ ...formData, tweet_url: e.target.value })}
+                      placeholder="https://twitter.com/user/status/..."
+                      className="h-11"
+                      disabled={isGenerating}
+                    />
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-6 pt-2">
                   <div className="flex items-center space-x-2">
                     <Checkbox
@@ -363,8 +409,27 @@ function InspirePage() {
       {/* Results */}
       {result && (
         <div ref={resultsRef} className="space-y-6 animate-fade-in">
-          {/* Original Tweet */}
-          <OriginalTweet tweet={result.original_tweet} />
+          {/* Original Tweet or Prompt */}
+          {result.original_tweet ? (
+            <OriginalTweet tweet={result.original_tweet} />
+          ) : result.prompt ? (
+             <Card className="bg-card/50">
+               <CardContent className="p-4">
+                 <div className="flex items-start gap-3">
+                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/60 to-primary text-white font-bold">
+                     <Sparkles className="h-5 w-5" />
+                   </div>
+                   <div className="flex-1 min-w-0">
+                     <div className="flex items-center gap-2 mb-1">
+                       <span className="font-semibold text-primary">Prompt</span>
+                       <span className="text-xs text-muted-foreground">Original inspiration</span>
+                     </div>
+                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{result.prompt}</p>
+                   </div>
+                 </div>
+               </CardContent>
+             </Card>
+          ) : null}
 
           {/* Generated Content */}
           <div className="space-y-4">
@@ -435,8 +500,8 @@ function InspirePage() {
                         <SelectValue placeholder="Type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="quote">Quote</SelectItem>
                         <SelectItem value="tweet">Tweet</SelectItem>
+                        <SelectItem value="quote">Quote</SelectItem>
                         <SelectItem value="reply">Reply</SelectItem>
                         <SelectItem value="thread">Thread</SelectItem>
                       </SelectContent>
@@ -484,7 +549,7 @@ function InspirePage() {
 }
 
 // Original Tweet Component
-function OriginalTweet({ tweet }: { tweet: InspireResponse['original_tweet'] }) {
+function OriginalTweet({ tweet }: { tweet: NonNullable<InspireResponse['original_tweet']> }) {
   return (
     <Card className="bg-card/50">
       <CardContent className="p-4">

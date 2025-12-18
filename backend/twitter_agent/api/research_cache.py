@@ -11,8 +11,8 @@ _research_store: dict[str, dict] = {}
 
 def store_research(
     username: str,
-    tweet_url: str,
-    original_tweet: dict,
+    tweet_url: Optional[str],
+    original_tweet: Optional[dict],
     topic_info: Optional[str],
     extracted_topic: str,
     original_tweet_context: str,

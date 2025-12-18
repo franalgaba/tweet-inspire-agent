@@ -66,11 +66,12 @@ def save_history(history: list[dict]):
 
 
 def add_history_entry(
-    tweet_url: str,
+    tweet_url: Optional[str],
     username: str,
-    original_tweet: dict,
+    original_tweet: Optional[dict],
     proposals: dict,
     research_id: Optional[str] = None,
+    prompt: Optional[str] = None,
 ) -> dict:
     """
     Add a new entry to history.
@@ -95,6 +96,7 @@ def add_history_entry(
             "research_id": research_id,
             "created_at": datetime.now().isoformat(),
             "preview": _generate_preview(proposals),
+            "prompt": prompt,
         }
         
         history.insert(0, entry)  # Add to beginning

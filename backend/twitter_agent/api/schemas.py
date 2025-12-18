@@ -48,22 +48,24 @@ class InspireRequest(BaseModel):
     """Request schema for inspire endpoint."""
 
     username: str
-    tweet_url: str
-    content_type: str = "all"
+    tweet_url: Optional[str] = None
+    content_type: str = "tweet"
     profile_file: Optional[str] = None
     thread_count: int = 5
     vibe: Optional[str] = None
     deep_research: bool = False
     use_full_content: bool = False
     context: Optional[str] = None
+    topic: Optional[str] = None
 
 
 class InspireResponse(BaseModel):
     """Response schema for inspire endpoint."""
 
-    original_tweet: dict[str, Any]
+    original_tweet: Optional[dict[str, Any]] = None
     proposals: dict[str, Any]
     research_id: Optional[str] = None
+    prompt: Optional[str] = None
 
 
 class RegenerateRequest(BaseModel):
@@ -124,13 +126,14 @@ class HistoryEntry(BaseModel):
     """History entry schema."""
 
     id: int
-    tweet_url: str
+    tweet_url: Optional[str] = None
     username: str
-    original_tweet: dict[str, Any]
+    original_tweet: Optional[dict[str, Any]] = None
     proposals: dict[str, Any]
     research_id: Optional[str] = None
     created_at: str
     preview: str
+    prompt: Optional[str] = None
 
 
 class HistoryResponse(BaseModel):

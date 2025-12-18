@@ -3,7 +3,8 @@ const API_BASE = '/api'
 // Types
 export interface InspireRequest {
   username: string
-  tweet_url: string
+  tweet_url?: string
+  topic?: string
   content_type: string
   thread_count: number
   vibe?: string
@@ -14,7 +15,7 @@ export interface InspireRequest {
 }
 
 export interface InspireResponse {
-  original_tweet: {
+  original_tweet?: {
     text: string
     author_username?: string
     like_count?: number
@@ -29,6 +30,7 @@ export interface InspireResponse {
     thread?: Array<{ content: string[]; suggested_date?: string; based_on?: string[] }>
   }
   research_id?: string
+  prompt?: string
 }
 
 export interface RegenerateRequest {

@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Optional, Generator
+from typing import Optional, Generator, Any
 
 from twitter_agent.analysis.content_generator import ContentGenerator
 from twitter_agent.analysis.voice_analyzer import VoiceAnalyzer
@@ -201,20 +201,21 @@ def generate_content(
 
 def inspire_from_tweet(
     username: str,
-    tweet_url: str,
-    content_type: str = "all",
+    tweet_url: Optional[str] = None,
+    content_type: str = "tweet",
     profile_file: Optional[str] = None,
     thread_count: int = 5,
     vibe: Optional[str] = None,
     deep_research: bool = False,
     use_full_content: bool = False,
     context: Optional[str] = None,
-) -> tuple[dict, dict, Optional[str]]:
+    topic: Optional[str] = None,
+) -> tuple[Optional[dict], dict, Optional[str]]:
     """
-    Generate content inspired by a tweet URL.
+    Generate content inspired by a tweet URL or a topic/prompt.
 
     Returns:
-        Tuple of (original_tweet_dict, proposals_dict)
+        Tuple of (original_tweet_dict, proposals_dict, research_id)
     """
     config = get_config()
     if not config["twitter_api_key"]:
@@ -240,71 +241,94 @@ def inspire_from_tweet(
                 f"Make sure Ollama is running and model '{config['ollama_model']}' is installed."
             )
 
-        # Extract tweet ID from URL
-        tweet_id = TwitterAPIClient.extract_tweet_id_from_url(tweet_url)
-        if not tweet_id:
-            raise ValueError(f"Could not extract tweet ID from URL: {tweet_url}")
-
-        # Fetch the tweet
-        original_tweet = twitter_client.get_tweet_by_id(tweet_id)
-
-        # Check if tweet is part of a thread
-        thread_tweets = None
+        original_tweet = None
         thread_content = None
-        try:
-            thread_tweets = twitter_client.get_thread_context(tweet_id)
-            if thread_tweets and len(thread_tweets) > 1:
-                thread_texts = [tweet.text for tweet in thread_tweets]
-                thread_content = "\n\n".join(thread_texts)
-        except Exception:
-            pass
-
-        # Check if tweet links to an article
-        article_data = None
         article_content = None
-        try:
-            article_data = twitter_client.get_article_by_tweet_id(tweet_id)
-            if article_data:
-                article_content = article_data.get("full_text", "")
-        except Exception:
-            pass
+        extracted_topic = None
+        original_tweet_context = ""
+        topic_source = None
 
-        # Extract topic from the tweet
-        topic_source = original_tweet.text
-        if thread_content:
-            topic_source = thread_content
-            if article_content:
+        if tweet_url:
+            # Extract tweet ID from URL
+            tweet_id = TwitterAPIClient.extract_tweet_id_from_url(tweet_url)
+            if not tweet_id:
+                raise ValueError(f"Could not extract tweet ID from URL: {tweet_url}")
+
+            # Fetch the tweet
+            original_tweet = twitter_client.get_tweet_by_id(tweet_id)
+
+            # Check if tweet is part of a thread
+            thread_tweets = None
+            try:
+                thread_tweets = twitter_client.get_thread_context(tweet_id)
+                if thread_tweets and len(thread_tweets) > 1:
+                    thread_texts = [tweet.text for tweet in thread_tweets]
+                    thread_content = "\n\n".join(thread_texts)
+            except Exception:
+                pass
+
+            # Check if tweet links to an article
+            try:
+                article_data = twitter_client.get_article_by_tweet_id(tweet_id)
+                if article_data:
+                    article_content = article_data.get("full_text", "")
+            except Exception:
+                pass
+
+            # Extract topic from the tweet
+            topic_source = original_tweet.text
+            if thread_content:
+                topic_source = thread_content
+                if article_content:
+                    topic_source = (
+                        f"{thread_content}\n\nArticle content:\n{article_content[:2000]}"
+                    )
+            elif article_content:
                 topic_source = (
-                    f"{thread_content}\n\nArticle content:\n{article_content[:2000]}"
+                    f"{original_tweet.text}\n\nArticle content:\n{article_content[:2000]}"
                 )
-        elif article_content:
-            topic_source = (
-                f"{original_tweet.text}\n\nArticle content:\n{article_content[:2000]}"
-            )
 
-        # Extract topic summary
-        extracted_topic = ollama_client.extract_topic(topic_source)
+            # Extract topic summary
+            extracted_topic = ollama_client.extract_topic(topic_source)
+            
+            # Build context including thread and article if available
+            if thread_content:
+                thread_len = len(thread_tweets) if thread_tweets else 0
+                original_tweet_context = f"Thread by @{original_tweet.author_username} ({thread_len} tweets):\n{thread_content}"
+            else:
+                original_tweet_context = f"Original tweet by @{original_tweet.author_username}:\n{original_tweet.text}"
+
+            if article_content:
+                original_tweet_context += (
+                    f"\n\nArticle linked in tweet:\n{article_content[:2000]}"
+                )
+        else:
+            # Standalone mode
+            extracted_topic = topic or context or "general insights"
+            original_tweet_context = f"Standalone content generation based on topic: {extracted_topic}"
 
         # Research topic with Perplexity
         topic_info = None
         try:
             perplexity_client = PerplexityClient()
-            research_context = thread_content if thread_content else original_tweet.text
-            if article_content:
-                research_context = f"{research_context}\n\nRelated article content:\n{article_content[:1500]}"
+            
+            research_query = topic if topic else extracted_topic
+            research_context = original_tweet_context
+            if not tweet_url and context:
+                 research_context = f"{research_context}\n\nAdditional context: {context}"
 
             if deep_research:
-                if use_full_content:
+                if use_full_content and tweet_url and topic_source:
                     topic_info = perplexity_client.deep_research_topic(
                         topic=topic_source, original_tweet_text=None
                     )
                 else:
                     topic_info = perplexity_client.deep_research_topic(
-                        topic=extracted_topic, original_tweet_text=research_context
+                        topic=research_query, original_tweet_text=research_context
                     )
             else:
                 topic_info = perplexity_client.search_topic(
-                    extracted_topic, original_tweet_text=research_context
+                    research_query, original_tweet_text=research_context
                 )
         except ValueError:
             # PERPLEXITY_API_KEY not set
@@ -329,17 +353,6 @@ def inspire_from_tweet(
         # Use researched topic info if available, otherwise use extracted topic
         final_topic = topic_info if topic_info else extracted_topic
 
-        # Build context including thread and article if available
-        if thread_content:
-            original_tweet_context = f"Thread by @{original_tweet.author_username} ({len(thread_tweets)} tweets):\n{thread_content}"
-        else:
-            original_tweet_context = f"Original tweet by @{original_tweet.author_username}:\n{original_tweet.text}"
-
-        if article_content:
-            original_tweet_context += (
-                f"\n\nArticle linked in tweet:\n{article_content[:2000]}"
-            )
-
         # Add user-provided context if given
         if context:
             original_tweet_context += f"\n\nAdditional context:\n{context}"
@@ -350,7 +363,7 @@ def inspire_from_tweet(
         research_id = store_research(
             username=username,
             tweet_url=tweet_url,
-            original_tweet=original_tweet.model_dump(mode="json"),
+            original_tweet=original_tweet.model_dump(mode="json") if original_tweet else None,
             topic_info=topic_info,
             extracted_topic=extracted_topic,
             original_tweet_context=original_tweet_context,
@@ -363,7 +376,7 @@ def inspire_from_tweet(
         generate_all = content_type.lower() == "all"
         if not generate_all:
             try:
-                requested_type = ContentType(content_type.lower())
+                ContentType(content_type.lower())
             except ValueError:
                 raise ValueError(
                     f"Invalid content type '{content_type}'. Use: tweet, thread, reply, quote, or all"
@@ -383,7 +396,7 @@ def inspire_from_tweet(
         reply_proposals = []
         thread_proposals = []
 
-        if generate_all or content_type.lower() == "quote":
+        if (generate_all or content_type.lower() == "quote") and original_tweet:
             qt_proposals = generator.generate(
                 content_type=ContentType.QUOTE,
                 use_content=False,
@@ -403,11 +416,11 @@ def inspire_from_tweet(
                 use_calendar=False,
                 count=1,
                 topic=final_topic,
-                original_tweet_context=None,
+                original_tweet_context=original_tweet_context if tweet_url else None,
                 vibe=vibe,
             )
 
-        if generate_all or content_type.lower() == "reply":
+        if (generate_all or content_type.lower() == "reply") and original_tweet:
             reply_proposals = generator.generate(
                 content_type=ContentType.REPLY,
                 use_content=False,
@@ -427,13 +440,13 @@ def inspire_from_tweet(
                 use_calendar=False,
                 count=1,
                 topic=final_topic,
-                original_tweet_context=None,
+                original_tweet_context=original_tweet_context if tweet_url else None,
                 thread_count=thread_count,
                 vibe=vibe,
             )
 
         # Convert to dicts
-        original_tweet_dict = original_tweet.model_dump(mode="json")
+        original_tweet_dict = original_tweet.model_dump(mode="json") if original_tweet else None
         proposals_dict = {
             "quote": [p.model_dump(mode="json") for p in qt_proposals],
             "tweet": [p.model_dump(mode="json") for p in tweet_proposals],
@@ -454,17 +467,18 @@ def inspire_from_tweet(
 
 def inspire_from_tweet_with_progress(
     username: str,
-    tweet_url: str,
-    content_type: str = "all",
+    tweet_url: Optional[str] = None,
+    content_type: str = "tweet",
     profile_file: Optional[str] = None,
     thread_count: int = 5,
     vibe: Optional[str] = None,
     deep_research: bool = False,
     use_full_content: bool = False,
     context: Optional[str] = None,
+    topic: Optional[str] = None,
 ) -> Generator[dict, None, None]:
     """
-    Generate content inspired by a tweet URL with progress updates.
+    Generate content inspired by a tweet URL or a topic/prompt with progress updates.
 
     Yields progress events as dictionaries with 'step', 'message', and optionally 'progress' (0-100).
     Final event has step='complete' with 'data' containing the full result.
@@ -544,82 +558,107 @@ def inspire_from_tweet_with_progress(
                 "progress": 15,
             }
 
-        # Step 4: Extract tweet ID and fetch original tweet
-        yield {
-            "step": "fetching_tweet",
-            "message": "Fetching the original tweet...",
-            "progress": 25,
-        }
-
-        tweet_id = TwitterAPIClient.extract_tweet_id_from_url(tweet_url)
-        if not tweet_id:
-            raise ValueError(f"Could not extract tweet ID from URL: {tweet_url}")
-
-        original_tweet = twitter_client.get_tweet_by_id(tweet_id)
-
-        # Step 5: Check for thread context
-        yield {
-            "step": "checking_thread",
-            "message": "Checking for thread context...",
-            "progress": 30,
-        }
-
-        thread_tweets = None
+        original_tweet = None
         thread_content = None
-        try:
-            thread_tweets = twitter_client.get_thread_context(tweet_id)
-            if thread_tweets and len(thread_tweets) > 1:
-                thread_texts = [tweet.text for tweet in thread_tweets]
-                thread_content = "\n\n".join(thread_texts)
-                yield {
-                    "step": "checking_thread",
-                    "message": f"Found thread with {len(thread_tweets)} tweets",
-                    "progress": 35,
-                }
-        except Exception:
-            pass
-
-        # Step 6: Check for linked article
-        yield {
-            "step": "checking_article",
-            "message": "Checking for linked articles...",
-            "progress": 40,
-        }
-
-        article_data = None
         article_content = None
-        try:
-            article_data = twitter_client.get_article_by_tweet_id(tweet_id)
-            if article_data:
-                article_content = article_data.get("full_text", "")
-                yield {
-                    "step": "checking_article",
-                    "message": "Found linked article",
-                    "progress": 45,
-                }
-        except Exception:
-            pass
+        extracted_topic = None
+        original_tweet_context = ""
+        topic_source = None
 
-        # Step 7: Extract topic
-        yield {
-            "step": "extracting_topic",
-            "message": "Extracting topic from content...",
-            "progress": 50,
-        }
+        if tweet_url:
+            # Step 4: Extract tweet ID and fetch original tweet
+            yield {
+                "step": "fetching_tweet",
+                "message": "Fetching the original tweet...",
+                "progress": 25,
+            }
 
-        topic_source = original_tweet.text
-        if thread_content:
-            topic_source = thread_content
-            if article_content:
+            tweet_id = TwitterAPIClient.extract_tweet_id_from_url(tweet_url)
+            if not tweet_id:
+                raise ValueError(f"Could not extract tweet ID from URL: {tweet_url}")
+
+            original_tweet = twitter_client.get_tweet_by_id(tweet_id)
+
+            # Step 5: Check for thread context
+            yield {
+                "step": "checking_thread",
+                "message": "Checking for thread context...",
+                "progress": 30,
+            }
+
+            thread_tweets = None
+            try:
+                thread_tweets = twitter_client.get_thread_context(tweet_id)
+                if thread_tweets and len(thread_tweets) > 1:
+                    thread_texts = [tweet.text for tweet in thread_tweets]
+                    thread_content = "\n\n".join(thread_texts)
+                    yield {
+                        "step": "checking_thread",
+                        "message": f"Found thread with {len(thread_tweets)} tweets",
+                        "progress": 35,
+                    }
+            except Exception:
+                pass
+
+            # Step 6: Check for linked article
+            yield {
+                "step": "checking_article",
+                "message": "Checking for linked articles...",
+                "progress": 40,
+            }
+
+            try:
+                article_data = twitter_client.get_article_by_tweet_id(tweet_id)
+                if article_data:
+                    article_content = article_data.get("full_text", "")
+                    yield {
+                        "step": "checking_article",
+                        "message": "Found linked article",
+                        "progress": 45,
+                    }
+            except Exception:
+                pass
+
+            # Step 7: Extract topic
+            yield {
+                "step": "extracting_topic",
+                "message": "Extracting topic from content...",
+                "progress": 50,
+            }
+
+            topic_source = original_tweet.text
+            if thread_content:
+                topic_source = thread_content
+                if article_content:
+                    topic_source = (
+                        f"{thread_content}\n\nArticle content:\n{article_content[:2000]}"
+                    )
+            elif article_content:
                 topic_source = (
-                    f"{thread_content}\n\nArticle content:\n{article_content[:2000]}"
+                    f"{original_tweet.text}\n\nArticle content:\n{article_content[:2000]}"
                 )
-        elif article_content:
-            topic_source = (
-                f"{original_tweet.text}\n\nArticle content:\n{article_content[:2000]}"
-            )
 
-        extracted_topic = ollama_client.extract_topic(topic_source)
+            extracted_topic = ollama_client.extract_topic(topic_source)
+            
+            if thread_content:
+                thread_len = len(thread_tweets) if thread_tweets else 0
+                original_tweet_context = f"Thread by @{original_tweet.author_username} ({thread_len} tweets):\n{thread_content}"
+            else:
+                original_tweet_context = f"Original tweet by @{original_tweet.author_username}:\n{original_tweet.text}"
+
+            if article_content:
+                original_tweet_context += (
+                    f"\n\nArticle linked in tweet:\n{article_content[:2000]}"
+                )
+        else:
+            # Standalone mode
+            yield {
+                "step": "extracting_topic",
+                "message": "Preparing standalone topic...",
+                "progress": 50,
+            }
+            extracted_topic = topic or context or "general insights"
+            original_tweet_context = f"Standalone content generation based on topic: {extracted_topic}"
 
         # Step 8: Research topic with Perplexity
         yield {
@@ -631,9 +670,11 @@ def inspire_from_tweet_with_progress(
         topic_info = None
         try:
             perplexity_client = PerplexityClient()
-            research_context = thread_content if thread_content else original_tweet.text
-            if article_content:
-                research_context = f"{research_context}\n\nRelated article content:\n{article_content[:1500]}"
+            
+            research_query = topic if topic else extracted_topic
+            research_context = original_tweet_context
+            if not tweet_url and context:
+                 research_context = f"{research_context}\n\nAdditional context: {context}"
 
             if deep_research:
                 yield {
@@ -641,17 +682,17 @@ def inspire_from_tweet_with_progress(
                     "message": "Performing deep research...",
                     "progress": 60,
                 }
-                if use_full_content:
+                if use_full_content and tweet_url and topic_source:
                     topic_info = perplexity_client.deep_research_topic(
                         topic=topic_source, original_tweet_text=None
                     )
                 else:
                     topic_info = perplexity_client.deep_research_topic(
-                        topic=extracted_topic, original_tweet_text=research_context
+                        topic=research_query, original_tweet_text=research_context
                     )
             else:
                 topic_info = perplexity_client.search_topic(
-                    extracted_topic, original_tweet_text=research_context
+                    research_query, original_tweet_text=research_context
                 )
             yield {
                 "step": "researching",
@@ -694,16 +735,6 @@ def inspire_from_tweet_with_progress(
         # Build context
         final_topic = topic_info if topic_info else extracted_topic
 
-        if thread_content:
-            original_tweet_context = f"Thread by @{original_tweet.author_username} ({len(thread_tweets)} tweets):\n{thread_content}"
-        else:
-            original_tweet_context = f"Original tweet by @{original_tweet.author_username}:\n{original_tweet.text}"
-
-        if article_content:
-            original_tweet_context += (
-                f"\n\nArticle linked in tweet:\n{article_content[:2000]}"
-            )
-
         if context:
             original_tweet_context += f"\n\nAdditional context:\n{context}"
 
@@ -713,7 +744,7 @@ def inspire_from_tweet_with_progress(
         research_id = store_research(
             username=username,
             tweet_url=tweet_url,
-            original_tweet=original_tweet.model_dump(mode="json"),
+            original_tweet=original_tweet.model_dump(mode="json") if original_tweet else None,
             topic_info=topic_info,
             extracted_topic=extracted_topic,
             original_tweet_context=original_tweet_context,
@@ -732,7 +763,7 @@ def inspire_from_tweet_with_progress(
         generate_all = content_type.lower() == "all"
         if not generate_all:
             try:
-                requested_type = ContentType(content_type.lower())
+                ContentType(content_type.lower())
             except ValueError:
                 raise ValueError(
                     f"Invalid content type '{content_type}'. Use: tweet, thread, reply, quote, or all"
@@ -751,7 +782,7 @@ def inspire_from_tweet_with_progress(
         reply_proposals = []
         thread_proposals = []
 
-        if generate_all or content_type.lower() == "quote":
+        if (generate_all or content_type.lower() == "quote") and original_tweet:
             yield {
                 "step": "generating",
                 "message": "Generating quote tweet...",
@@ -781,11 +812,11 @@ def inspire_from_tweet_with_progress(
                 use_calendar=False,
                 count=1,
                 topic=final_topic,
-                original_tweet_context=None,
+                original_tweet_context=original_tweet_context if tweet_url else None,
                 vibe=vibe,
             )
 
-        if generate_all or content_type.lower() == "reply":
+        if (generate_all or content_type.lower() == "reply") and original_tweet:
             yield {
                 "step": "generating",
                 "message": "Generating reply...",
@@ -815,13 +846,13 @@ def inspire_from_tweet_with_progress(
                 use_calendar=False,
                 count=1,
                 topic=final_topic,
-                original_tweet_context=None,
+                original_tweet_context=original_tweet_context if tweet_url else None,
                 thread_count=thread_count,
                 vibe=vibe,
             )
 
         # Convert to dicts
-        original_tweet_dict = original_tweet.model_dump(mode="json")
+        original_tweet_dict = original_tweet.model_dump(mode="json") if original_tweet else None
         proposals_dict = {
             "quote": [p.model_dump(mode="json") for p in qt_proposals],
             "tweet": [p.model_dump(mode="json") for p in tweet_proposals],
@@ -838,6 +869,7 @@ def inspire_from_tweet_with_progress(
                 "original_tweet": original_tweet_dict,
                 "proposals": proposals_dict,
                 "research_id": research_id,
+                "prompt": topic,
             },
         }
 
@@ -1094,8 +1126,8 @@ def regenerate_from_research(
         # Use researched topic info if available, otherwise use extracted topic
         final_topic = (
             research["topic_info"]
-            if research["topic_info"]
-            else research["extracted_topic"]
+            if research.get("topic_info")
+            else research.get("extracted_topic")
         )
 
         # Incorporate suggestions/changes into the topic if provided
@@ -1103,7 +1135,7 @@ def regenerate_from_research(
             final_topic = f"{final_topic}\n\nModification instructions: {suggestions}"
 
         # Build context (add user-provided context if given)
-        original_tweet_context = research["original_tweet_context"]
+        original_tweet_context = research.get("original_tweet_context", "")
         if context:
             original_tweet_context = (
                 f"{original_tweet_context}\n\nAdditional context:\n{context}"
@@ -1113,7 +1145,7 @@ def regenerate_from_research(
         generate_all = content_type.lower() == "all"
         if not generate_all:
             try:
-                requested_type = ContentType(content_type.lower())
+                ContentType(content_type.lower())
             except ValueError:
                 raise ValueError(
                     f"Invalid content type '{content_type}'. Use: tweet, thread, reply, quote, or all"
@@ -1132,8 +1164,10 @@ def regenerate_from_research(
         tweet_proposals = []
         reply_proposals = []
         thread_proposals = []
+        
+        original_tweet = research.get("original_tweet")
 
-        if generate_all or content_type.lower() == "quote":
+        if (generate_all or content_type.lower() == "quote") and original_tweet:
             qt_proposals = generator.generate(
                 content_type=ContentType.QUOTE,
                 use_content=False,
@@ -1153,11 +1187,11 @@ def regenerate_from_research(
                 use_calendar=False,
                 count=1,
                 topic=final_topic,
-                original_tweet_context=None,
+                original_tweet_context=original_tweet_context if research.get("tweet_url") else None,
                 vibe=vibe,
             )
 
-        if generate_all or content_type.lower() == "reply":
+        if (generate_all or content_type.lower() == "reply") and original_tweet:
             reply_proposals = generator.generate(
                 content_type=ContentType.REPLY,
                 use_content=False,
@@ -1177,7 +1211,7 @@ def regenerate_from_research(
                 use_calendar=False,
                 count=1,
                 topic=final_topic,
-                original_tweet_context=None,
+                original_tweet_context=original_tweet_context if research.get("tweet_url") else None,
                 thread_count=thread_count,
                 vibe=vibe,
             )

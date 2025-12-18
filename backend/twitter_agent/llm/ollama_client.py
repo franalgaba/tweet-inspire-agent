@@ -112,7 +112,9 @@ class OllamaClient:
                 return result
         except httpx.HTTPStatusError as e:
             logger.error(f"Ollama API HTTP error: {e.response.status_code}")
-            raise OllamaError(f"Ollama API error: {e.response.text}") from e
+            logger.error(f"Request URL: {e.request.url}")
+            logger.error(f"Response: {e.response.text}")
+            raise OllamaError(f"Ollama API HTTP error: {e.response.status_code} - {e.response.text}") from e
         except Exception as e:
             logger.exception("Unexpected error during Ollama generation")
             raise OllamaError(f"Unexpected error during generation: {str(e)}") from e
