@@ -3,7 +3,7 @@
 import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
-from typing import AsyncGenerator, Any
+from typing import Any, AsyncGenerator
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -27,11 +27,12 @@ router = APIRouter(prefix="/inspire", tags=["inspire"])
 @router.post("", response_model=InspireResponse)
 async def inspire(request: InspireRequest):
     """Generate content from a tweet URL or a topic/prompt."""
-    # Validation
-    if request.content_type != "tweet" and not request.tweet_url:
+    # Validation: tweet and thread can be standalone, but quote and reply require a tweet_url
+    standalone_allowed = ["tweet", "thread"]
+    if request.content_type not in standalone_allowed and not request.tweet_url:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Tweet URL is required for content type '{request.content_type}'"
+            status_code=400,
+            detail=f"Tweet URL is required for content type '{request.content_type}'",
         )
 
     try:

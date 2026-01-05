@@ -1,6 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useMutation } from "@tanstack/react-query";
 import {
   Loader2,
   Sparkles,
@@ -17,165 +17,225 @@ import {
   RotateCcw,
   MessageSquarePlus,
   Trash2,
-  Type
-} from 'lucide-react'
-import { api, inspireWithProgress, type InspireRequest, type InspireResponse, type RegenerateRequest, type ProgressEvent } from '~/lib/api'
-import { Button } from '~/components/ui/button'
-import { Input } from '~/components/ui/input'
-import { Label } from '~/components/ui/label'
-import { Textarea } from '~/components/ui/textarea'
-import { Checkbox } from '~/components/ui/checkbox'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
-import { Card, CardContent } from '~/components/ui/card'
-import { Alert, AlertDescription } from '~/components/ui/alert'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
-import { cn } from '~/lib/utils'
+  Type,
+  FileText,
+  Upload,
+} from "lucide-react";
+import {
+  api,
+  inspireWithProgress,
+  type InspireRequest,
+  type InspireResponse,
+  type RegenerateRequest,
+  type ProgressEvent,
+} from "~/lib/api";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import { Textarea } from "~/components/ui/textarea";
+import { Checkbox } from "~/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
+import { Card, CardContent } from "~/components/ui/card";
+import { Alert, AlertDescription } from "~/components/ui/alert";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
+import { cn } from "~/lib/utils";
 
 // Annotation types for inline text suggestions
 interface Annotation {
-  id: string
-  start: number
-  end: number
-  text: string
-  suggestion: string
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  suggestion: string;
 }
 
 interface TextSegment {
-  text: string
-  annotation?: Annotation
-  start: number
-  end: number
+  text: string;
+  annotation?: Annotation;
+  start: number;
+  end: number;
 }
 
-export const Route = createFileRoute('/')({
+export const Route = createFileRoute("/")({
   component: InspirePage,
-})
+});
 
 function InspirePage() {
-  const [result, setResult] = useState<InspireResponse | null>(null)
-  const [regeneratedProposals, setRegeneratedProposals] = useState<InspireResponse['proposals'] | null>(null)
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [currentProgress, setCurrentProgress] = useState<ProgressEvent | null>(null)
-  const resultsRef = useRef<HTMLDivElement>(null)
+  const [result, setResult] = useState<InspireResponse | null>(null);
+  const [regeneratedProposals, setRegeneratedProposals] = useState<
+    InspireResponse["proposals"] | null
+  >(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentProgress, setCurrentProgress] = useState<ProgressEvent | null>(
+    null,
+  );
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState<InspireRequest>({
-    username: '',
-    tweet_url: '',
-    topic: '',
-    content_type: 'tweet',
+    username: "",
+    tweet_url: "",
+    topic: "",
+    content_type: "tweet",
     thread_count: 5,
-    vibe: '',
-    context: '',
-    profile_file: '',
+    vibe: "",
+    context: "",
+    profile_file: "",
     deep_research: false,
     use_full_content: false,
-  })
+  });
 
-  const [regenerateData, setRegenerateData] = useState<Omit<RegenerateRequest, 'research_id'>>({
-    content_type: 'tweet',
+  // State for attached markdown files
+  const [attachedFiles, setAttachedFiles] = useState<
+    Array<{ name: string; content: string }>
+  >([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [regenerateData, setRegenerateData] = useState<
+    Omit<RegenerateRequest, "research_id">
+  >({
+    content_type: "tweet",
     thread_count: 5,
-    vibe: '',
-    context: '',
-    suggestions: '',
-  })
+    vibe: "",
+    context: "",
+    suggestions: "",
+  });
 
   const regenerateMutation = useMutation({
-    mutationFn: (data: RegenerateRequest) => api.regenerate({
-      ...data,
-      vibe: data.vibe || undefined,
-      context: data.context || undefined,
-      suggestions: data.suggestions || undefined,
-    }),
+    mutationFn: (data: RegenerateRequest) =>
+      api.regenerate({
+        ...data,
+        vibe: data.vibe || undefined,
+        context: data.context || undefined,
+        suggestions: data.suggestions || undefined,
+      }),
     onSuccess: (response) => {
-      setRegeneratedProposals(response.proposals)
+      setRegeneratedProposals(response.proposals);
     },
-  })
+  });
 
   // Scroll to results when they appear
   useEffect(() => {
     if (result && resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [result])
+  }, [result]);
 
   const handleProgressUpdate = useCallback((event: ProgressEvent) => {
-    setCurrentProgress(event)
-  }, [])
+    setCurrentProgress(event);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsGenerating(true)
-    setError(null)
-    setResult(null)
-    setCurrentProgress(null)
-    setRegeneratedProposals(null)
+    e.preventDefault();
+    setIsGenerating(true);
+    setError(null);
+    setResult(null);
+    setCurrentProgress(null);
+    setRegeneratedProposals(null);
+
+    // Build context with attached file contents
+    let fullContext = formData.context || "";
+    if (attachedFiles.length > 0) {
+      const fileContents = attachedFiles
+        .map((file) => `--- ${file.name} ---\n${file.content}`)
+        .join("\n\n");
+      fullContext = fullContext
+        ? `${fullContext}\n\n--- Attached Files ---\n${fileContents}`
+        : fileContents;
+    }
 
     try {
       const response = await inspireWithProgress(
         {
           ...formData,
-          tweet_url: formData.content_type === 'tweet' ? (formData.tweet_url || undefined) : formData.tweet_url,
-          topic: formData.content_type === 'tweet' ? (formData.topic || undefined) : undefined,
+          tweet_url: ["tweet", "thread"].includes(formData.content_type)
+            ? formData.tweet_url || undefined
+            : formData.tweet_url,
+          topic: ["tweet", "thread"].includes(formData.content_type)
+            ? formData.topic || undefined
+            : undefined,
           vibe: formData.vibe || undefined,
-          context: formData.context || undefined,
+          context: fullContext || undefined,
           profile_file: formData.profile_file || undefined,
         },
-        handleProgressUpdate
-      )
+        handleProgressUpdate,
+      );
 
-      setResult(response)
+      setResult(response);
       setRegenerateData({
         content_type: formData.content_type,
         thread_count: formData.thread_count,
-        vibe: formData.vibe || '',
-        context: formData.context || '',
-        suggestions: '',
-      })
+        vibe: formData.vibe || "",
+        context: formData.context || "",
+        suggestions: "",
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
-      setIsGenerating(false)
+      setIsGenerating(false);
     }
-  }
+  };
 
   const handleRegenerate = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!result?.research_id) return
+    e.preventDefault();
+    if (!result?.research_id) return;
     regenerateMutation.mutate({
       research_id: result.research_id,
       ...regenerateData,
-    })
-  }
+    });
+  };
 
   // Handler for inline regeneration from proposal cards
-  const handleInlineRegenerate = useCallback((suggestions: string, contentType: string) => {
-    if (!result?.research_id) return
-    regenerateMutation.mutate({
-      research_id: result.research_id,
-      content_type: contentType,
-      thread_count: formData.thread_count,
-      vibe: formData.vibe || '',
-      context: formData.context || '',
-      suggestions,
-    })
-  }, [result?.research_id, formData.thread_count, formData.vibe, formData.context, regenerateMutation])
+  const handleInlineRegenerate = useCallback(
+    (suggestions: string, contentType: string) => {
+      if (!result?.research_id) return;
+      regenerateMutation.mutate({
+        research_id: result.research_id,
+        content_type: contentType,
+        thread_count: formData.thread_count,
+        vibe: formData.vibe || "",
+        context: formData.context || "",
+        suggestions,
+      });
+    },
+    [
+      result?.research_id,
+      formData.thread_count,
+      formData.vibe,
+      formData.context,
+      regenerateMutation,
+    ],
+  );
 
-  const displayProposals = regeneratedProposals || result?.proposals
-  const isStandalone = formData.content_type === 'tweet' && !formData.tweet_url
+  const displayProposals = regeneratedProposals || result?.proposals;
 
   return (
     <div className="space-y-8">
       {/* Hero Input Section */}
       <div className="text-center space-y-4 pt-8">
         <h2 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-          {formData.content_type === 'tweet' ? 'Create new content' : 'Get inspired by any tweet'}
+          {["tweet", "thread"].includes(formData.content_type) &&
+          !formData.tweet_url
+            ? "Create new content"
+            : "Get inspired by any tweet"}
         </h2>
         <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-          {formData.content_type === 'tweet' 
-            ? 'Generate engaging standalone tweets in your unique voice' 
-            : 'Paste a tweet URL and let AI generate engaging content in your unique voice'}
+          {["tweet", "thread"].includes(formData.content_type) &&
+          !formData.tweet_url
+            ? `Generate engaging ${formData.content_type === "thread" ? "threads" : "tweets"} in your unique voice`
+            : "Paste a tweet URL and let AI generate engaging content in your unique voice"}
         </p>
       </div>
 
@@ -185,7 +245,7 @@ function InspirePage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Primary Inputs */}
             <div className="space-y-4">
-              {formData.content_type !== 'tweet' ? (
+              {!["tweet", "thread"].includes(formData.content_type) ? (
                 <div className="space-y-2">
                   <Label htmlFor="tweet_url" className="text-base font-medium">
                     Tweet URL
@@ -196,7 +256,9 @@ function InspirePage() {
                       id="tweet_url"
                       type="url"
                       value={formData.tweet_url}
-                      onChange={(e) => setFormData({ ...formData, tweet_url: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, tweet_url: e.target.value })
+                      }
                       placeholder="https://twitter.com/user/status/123456789..."
                       className="pl-10 h-12 text-base"
                       required
@@ -207,21 +269,30 @@ function InspirePage() {
               ) : (
                 <div className="space-y-2">
                   <Label htmlFor="topic" className="text-base font-medium">
-                    What do you want to tweet about?
+                    {formData.content_type === "thread"
+                      ? "What do you want to write a thread about?"
+                      : "What do you want to tweet about?"}
                   </Label>
                   <div className="relative">
                     <Type className="absolute left-3 top-4 h-4 w-4 text-muted-foreground" />
                     <Textarea
                       id="topic"
                       value={formData.topic}
-                      onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
-                      placeholder="AI, coding, life updates, tech trends..."
+                      onChange={(e) =>
+                        setFormData({ ...formData, topic: e.target.value })
+                      }
+                      placeholder={
+                        formData.content_type === "thread"
+                          ? "A deep dive into AI agents, my startup journey, lessons learned..."
+                          : "AI, coding, life updates, tech trends..."
+                      }
                       className="pl-10 min-h-[80px] text-base resize-none"
                       disabled={isGenerating}
                     />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Optional: leave empty to generate based on your voice profile and general context.
+                    Optional: leave empty to generate based on your voice
+                    profile and general context.
                   </p>
                 </div>
               )}
@@ -234,7 +305,9 @@ function InspirePage() {
                   <Input
                     id="username"
                     value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, username: e.target.value })
+                    }
                     placeholder="username (without @)"
                     className="h-11"
                     required
@@ -248,17 +321,23 @@ function InspirePage() {
                   </Label>
                   <Select
                     value={formData.content_type}
-                    onValueChange={(value) => setFormData({ ...formData, content_type: value })}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, content_type: value })
+                    }
                     disabled={isGenerating}
                   >
                     <SelectTrigger className="h-11">
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="tweet">Standalone Tweet</SelectItem>
-                      <SelectItem value="quote">Quote Tweet</SelectItem>
-                      <SelectItem value="reply">Reply</SelectItem>
+                      <SelectItem value="tweet">Single Tweet</SelectItem>
                       <SelectItem value="thread">Thread</SelectItem>
+                      {formData.tweet_url && (
+                        <>
+                          <SelectItem value="quote">Quote Tweet</SelectItem>
+                          <SelectItem value="reply">Reply</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -274,10 +353,12 @@ function InspirePage() {
             >
               <Settings2 className="h-4 w-4" />
               Advanced options
-              <ChevronDown className={cn(
-                "h-4 w-4 transition-transform",
-                showAdvanced && "rotate-180"
-              )} />
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  showAdvanced && "rotate-180",
+                )}
+              />
             </button>
 
             {/* Advanced Options */}
@@ -291,7 +372,9 @@ function InspirePage() {
                     <Input
                       id="vibe"
                       value={formData.vibe}
-                      onChange={(e) => setFormData({ ...formData, vibe: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, vibe: e.target.value })
+                      }
                       placeholder="e.g., witty, professional, casual..."
                       className="h-11"
                       disabled={isGenerating}
@@ -306,7 +389,12 @@ function InspirePage() {
                       type="number"
                       id="thread_count"
                       value={formData.thread_count}
-                      onChange={(e) => setFormData({ ...formData, thread_count: parseInt(e.target.value) || 5 })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          thread_count: parseInt(e.target.value) || 5,
+                        })
+                      }
                       min={2}
                       max={20}
                       className="h-11"
@@ -322,15 +410,93 @@ function InspirePage() {
                   <Textarea
                     id="context"
                     value={formData.context}
-                    onChange={(e) => setFormData({ ...formData, context: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, context: e.target.value })
+                    }
                     placeholder="Any specific angle or context you want to add..."
                     rows={2}
                     className="resize-none"
                     disabled={isGenerating}
                   />
+
+                  {/* Markdown file attachments */}
+                  <div className="pt-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".md,.markdown,.txt"
+                      multiple
+                      onChange={(e) => {
+                        const files = e.target.files;
+                        if (!files) return;
+
+                        Array.from(files).forEach((file) => {
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const content = event.target?.result as string;
+                            setAttachedFiles((prev) => {
+                              // Avoid duplicates
+                              if (prev.some((f) => f.name === file.name)) {
+                                return prev;
+                              }
+                              return [...prev, { name: file.name, content }];
+                            });
+                          };
+                          reader.readAsText(file);
+                        });
+                        // Reset input so same file can be selected again
+                        e.target.value = "";
+                      }}
+                      className="hidden"
+                      disabled={isGenerating}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isGenerating}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Attach markdown files
+                    </button>
+
+                    {/* Display attached files */}
+                    {attachedFiles.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {attachedFiles.map((file, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between gap-2 px-2 py-1.5 bg-muted/50 rounded text-xs"
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              <span className="truncate">{file.name}</span>
+                              <span className="text-muted-foreground shrink-0">
+                                ({Math.round(file.content.length / 1024)}KB)
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setAttachedFiles((prev) =>
+                                  prev.filter((_, i) => i !== index),
+                                );
+                              }}
+                              disabled={isGenerating}
+                              className="h-5 w-5 p-0 hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {formData.content_type === 'tweet' && (
+                {["tweet", "thread"].includes(formData.content_type) && (
                   <div className="space-y-2">
                     <Label htmlFor="tweet_url_optional" className="text-sm">
                       Reference a tweet (optional)
@@ -339,7 +505,9 @@ function InspirePage() {
                       id="tweet_url_optional"
                       type="url"
                       value={formData.tweet_url}
-                      onChange={(e) => setFormData({ ...formData, tweet_url: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, tweet_url: e.target.value })
+                      }
                       placeholder="https://twitter.com/user/status/..."
                       className="h-11"
                       disabled={isGenerating}
@@ -352,10 +520,18 @@ function InspirePage() {
                     <Checkbox
                       id="deep_research"
                       checked={formData.deep_research}
-                      onCheckedChange={(checked) => setFormData({ ...formData, deep_research: checked === true })}
+                      onCheckedChange={(checked) =>
+                        setFormData({
+                          ...formData,
+                          deep_research: checked === true,
+                        })
+                      }
                       disabled={isGenerating}
                     />
-                    <Label htmlFor="deep_research" className="text-sm cursor-pointer">
+                    <Label
+                      htmlFor="deep_research"
+                      className="text-sm cursor-pointer"
+                    >
                       Deep research mode
                     </Label>
                   </div>
@@ -364,10 +540,18 @@ function InspirePage() {
                     <Checkbox
                       id="use_full_content"
                       checked={formData.use_full_content}
-                      onCheckedChange={(checked) => setFormData({ ...formData, use_full_content: checked === true })}
+                      onCheckedChange={(checked) =>
+                        setFormData({
+                          ...formData,
+                          use_full_content: checked === true,
+                        })
+                      }
                       disabled={isGenerating}
                     />
-                    <Label htmlFor="use_full_content" className="text-sm cursor-pointer">
+                    <Label
+                      htmlFor="use_full_content"
+                      className="text-sm cursor-pointer"
+                    >
                       Use full content for research
                     </Label>
                   </div>
@@ -385,7 +569,7 @@ function InspirePage() {
               {isGenerating ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  {currentProgress?.message || 'Generating content...'}
+                  {currentProgress?.message || "Generating content..."}
                 </>
               ) : (
                 <>
@@ -413,22 +597,26 @@ function InspirePage() {
           {result.original_tweet ? (
             <OriginalTweet tweet={result.original_tweet} />
           ) : result.prompt ? (
-             <Card className="bg-card/50">
-               <CardContent className="p-4">
-                 <div className="flex items-start gap-3">
-                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/60 to-primary text-white font-bold">
-                     <Sparkles className="h-5 w-5" />
-                   </div>
-                   <div className="flex-1 min-w-0">
-                     <div className="flex items-center gap-2 mb-1">
-                       <span className="font-semibold text-primary">Prompt</span>
-                       <span className="text-xs text-muted-foreground">Original inspiration</span>
-                     </div>
-                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{result.prompt}</p>
-                   </div>
-                 </div>
-               </CardContent>
-             </Card>
+            <Card className="bg-card/50">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/60 to-primary text-white font-bold">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-primary">Prompt</span>
+                      <span className="text-xs text-muted-foreground">
+                        Original inspiration
+                      </span>
+                    </div>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {result.prompt}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           ) : null}
 
           {/* Generated Content */}
@@ -494,7 +682,12 @@ function InspirePage() {
                   <div className="flex flex-wrap gap-3">
                     <Select
                       value={regenerateData.content_type}
-                      onValueChange={(value) => setRegenerateData({ ...regenerateData, content_type: value })}
+                      onValueChange={(value) =>
+                        setRegenerateData({
+                          ...regenerateData,
+                          content_type: value,
+                        })
+                      }
                     >
                       <SelectTrigger className="w-40 h-9">
                         <SelectValue placeholder="Type" />
@@ -509,7 +702,12 @@ function InspirePage() {
 
                     <Input
                       value={regenerateData.vibe}
-                      onChange={(e) => setRegenerateData({ ...regenerateData, vibe: e.target.value })}
+                      onChange={(e) =>
+                        setRegenerateData({
+                          ...regenerateData,
+                          vibe: e.target.value,
+                        })
+                      }
                       placeholder="Different vibe..."
                       className="flex-1 min-w-[150px] h-9"
                     />
@@ -534,7 +732,12 @@ function InspirePage() {
 
                   <Input
                     value={regenerateData.suggestions}
-                    onChange={(e) => setRegenerateData({ ...regenerateData, suggestions: e.target.value })}
+                    onChange={(e) =>
+                      setRegenerateData({
+                        ...regenerateData,
+                        suggestions: e.target.value,
+                      })
+                    }
                     placeholder="Suggestions: make it shorter, more technical, add humor..."
                     className="h-9 text-sm"
                   />
@@ -545,41 +748,54 @@ function InspirePage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // Original Tweet Component
-function OriginalTweet({ tweet }: { tweet: NonNullable<InspireResponse['original_tweet']> }) {
+function OriginalTweet({
+  tweet,
+}: {
+  tweet: NonNullable<InspireResponse["original_tweet"]>;
+}) {
   return (
     <Card className="bg-card/50">
       <CardContent className="p-4">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-white font-bold">
-            {tweet.author_username?.[0]?.toUpperCase() || '?'}
+            {tweet.author_username?.[0]?.toUpperCase() || "?"}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-semibold">@{tweet.author_username || 'unknown'}</span>
-              <span className="text-xs text-muted-foreground">Original tweet</span>
+              <span className="font-semibold">
+                @{tweet.author_username || "unknown"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Original tweet
+              </span>
             </div>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{tweet.text}</p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+              {tweet.text}
+            </p>
           </div>
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 // Helper function to split text into segments based on annotations
-function getTextSegments(text: string, annotations: Annotation[]): TextSegment[] {
+function getTextSegments(
+  text: string,
+  annotations: Annotation[],
+): TextSegment[] {
   if (annotations.length === 0) {
-    return [{ text, start: 0, end: text.length }]
+    return [{ text, start: 0, end: text.length }];
   }
 
   // Sort annotations by start position
-  const sorted = [...annotations].sort((a, b) => a.start - b.start)
-  const segments: TextSegment[] = []
-  let currentPos = 0
+  const sorted = [...annotations].sort((a, b) => a.start - b.start);
+  const segments: TextSegment[] = [];
+  let currentPos = 0;
 
   for (const annotation of sorted) {
     // Add text before this annotation
@@ -588,7 +804,7 @@ function getTextSegments(text: string, annotations: Annotation[]): TextSegment[]
         text: text.slice(currentPos, annotation.start),
         start: currentPos,
         end: annotation.start,
-      })
+      });
     }
     // Add the annotated segment
     segments.push({
@@ -596,8 +812,8 @@ function getTextSegments(text: string, annotations: Annotation[]): TextSegment[]
       annotation,
       start: annotation.start,
       end: annotation.end,
-    })
-    currentPos = annotation.end
+    });
+    currentPos = annotation.end;
   }
 
   // Add remaining text after last annotation
@@ -606,21 +822,19 @@ function getTextSegments(text: string, annotations: Annotation[]): TextSegment[]
       text: text.slice(currentPos),
       start: currentPos,
       end: text.length,
-    })
+    });
   }
 
-  return segments
+  return segments;
 }
 
 // Format annotations for the API
 function formatAnnotationsForAPI(annotations: Annotation[]): string {
-  return annotations
-    .map((a) => `For "${a.text}": ${a.suggestion}`)
-    .join('\n')
+  return annotations.map((a) => `For "${a.text}": ${a.suggestion}`).join("\n");
 }
 
 // Edit mode types
-type EditMode = 'annotate' | 'edit'
+type EditMode = "annotate" | "edit";
 
 // Proposal Card Component with Annotation System and Live Edit
 function ProposalCard({
@@ -628,136 +842,147 @@ function ProposalCard({
   content,
   contentType,
   onRegenerate,
-  isRegenerating
+  isRegenerating,
 }: {
-  type: string
-  content: string | string[]
-  contentType: string
-  onRegenerate?: (suggestions: string, specificType: string) => void
-  isRegenerating?: boolean
+  type: string;
+  content: string | string[];
+  contentType: string;
+  onRegenerate?: (suggestions: string, specificType: string) => void;
+  isRegenerating?: boolean;
 }) {
-  const [copied, setCopied] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editMode, setEditMode] = useState<EditMode>('annotate')
-  const [editedText, setEditedText] = useState('')
-  const [annotations, setAnnotations] = useState<Annotation[]>([])
-  const [showPopover, setShowPopover] = useState(false)
-  const [popoverPosition, setPopoverPosition] = useState({ x: 0, y: 0 })
-  const [selectedRange, setSelectedRange] = useState<{ start: number; end: number; text: string } | null>(null)
-  const [suggestionInput, setSuggestionInput] = useState('')
-  const textContainerRef = useRef<HTMLDivElement>(null)
-  const originalText = Array.isArray(content) ? content.join('\n\n') : content
+  const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editMode, setEditMode] = useState<EditMode>("annotate");
+  const [editedText, setEditedText] = useState("");
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [showPopover, setShowPopover] = useState(false);
+  const [popoverPosition, setPopoverPosition] = useState({ x: 0, y: 0 });
+  const [selectedRange, setSelectedRange] = useState<{
+    start: number;
+    end: number;
+    text: string;
+  } | null>(null);
+  const [suggestionInput, setSuggestionInput] = useState("");
+  const textContainerRef = useRef<HTMLDivElement>(null);
+  const originalText = Array.isArray(content) ? content.join("\n\n") : content;
 
   const handleCopy = async () => {
-    const textToCopy = editMode === 'edit' && editedText ? editedText : originalText
-    await navigator.clipboard.writeText(textToCopy)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+    const textToCopy =
+      editMode === "edit" && editedText ? editedText : originalText;
+    await navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleEdit = () => {
-    setIsEditing(true)
-    setEditMode('annotate')
-    setEditedText(originalText)
-    setAnnotations([])
-  }
+    setIsEditing(true);
+    setEditMode("annotate");
+    setEditedText(originalText);
+    setAnnotations([]);
+  };
 
   const handleCancel = () => {
-    setIsEditing(false)
-    setEditMode('annotate')
-    setEditedText('')
-    setAnnotations([])
-    setShowPopover(false)
-    setSelectedRange(null)
-    setSuggestionInput('')
-  }
+    setIsEditing(false);
+    setEditMode("annotate");
+    setEditedText("");
+    setAnnotations([]);
+    setShowPopover(false);
+    setSelectedRange(null);
+    setSuggestionInput("");
+  };
 
   const handleRegenerate = () => {
-    if (!onRegenerate) return
+    if (!onRegenerate) return;
 
-    if (editMode === 'annotate' && annotations.length > 0) {
-      const suggestions = formatAnnotationsForAPI(annotations)
-      onRegenerate(suggestions, contentType)
-    } else if (editMode === 'edit' && editedText !== originalText) {
-      const suggestions = `Improve based on this edited version: "${editedText}"`
-      onRegenerate(suggestions, contentType)
+    if (editMode === "annotate" && annotations.length > 0) {
+      const suggestions = formatAnnotationsForAPI(annotations);
+      onRegenerate(suggestions, contentType);
+    } else if (editMode === "edit" && editedText !== originalText) {
+      const suggestions = `Improve based on this edited version: "${editedText}"`;
+      onRegenerate(suggestions, contentType);
     }
 
-    setIsEditing(false)
-    setAnnotations([])
-    setEditedText('')
-  }
+    setIsEditing(false);
+    setAnnotations([]);
+    setEditedText("");
+  };
 
-  const canRegenerate = editMode === 'annotate'
-    ? annotations.length > 0
-    : editedText !== originalText
+  const canRegenerate =
+    editMode === "annotate"
+      ? annotations.length > 0
+      : editedText !== originalText;
 
   const handleMouseUp = useCallback(() => {
-    if (!isEditing || editMode !== 'annotate' || !textContainerRef.current) return
+    if (!isEditing || editMode !== "annotate" || !textContainerRef.current)
+      return;
 
-    const selection = window.getSelection()
+    const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
-      return
+      return;
     }
 
-    const selectedText = selection.toString().trim()
-    const range = selection.getRangeAt(0)
+    const selectedText = selection.toString().trim();
+    const range = selection.getRangeAt(0);
 
     // Check if selection is within our text container
     if (!textContainerRef.current.contains(range.commonAncestorContainer)) {
-      return
+      return;
     }
 
     // Calculate the position within the original text
-    const rangeText = range.toString()
+    const rangeText = range.toString();
 
     // Find the start position by looking at the selection's position relative to the container
-    let startOffset = 0
+    let startOffset = 0;
     const treeWalker = document.createTreeWalker(
       textContainerRef.current,
       NodeFilter.SHOW_TEXT,
-      null
-    )
+      null,
+    );
 
-    let node: Node | null
-    let found = false
+    let node: Node | null;
+    let found = false;
     while ((node = treeWalker.nextNode())) {
       if (node === range.startContainer) {
-        startOffset += range.startOffset
-        found = true
-        break
+        startOffset += range.startOffset;
+        found = true;
+        break;
       }
-      startOffset += (node.textContent?.length || 0)
+      startOffset += node.textContent?.length || 0;
     }
 
-    if (!found) return
+    if (!found) return;
 
-    const endOffset = startOffset + rangeText.length
+    const endOffset = startOffset + rangeText.length;
 
     // Check for overlapping annotations
     const hasOverlap = annotations.some(
-      (a) => (startOffset < a.end && endOffset > a.start)
-    )
+      (a) => startOffset < a.end && endOffset > a.start,
+    );
     if (hasOverlap) {
-      selection.removeAllRanges()
-      return
+      selection.removeAllRanges();
+      return;
     }
 
     // Get position for popover
-    const rect = range.getBoundingClientRect()
-    const containerRect = textContainerRef.current.getBoundingClientRect()
+    const rect = range.getBoundingClientRect();
+    const containerRect = textContainerRef.current.getBoundingClientRect();
 
     setPopoverPosition({
       x: rect.left - containerRect.left + rect.width / 2,
       y: rect.bottom - containerRect.top + 8,
-    })
-    setSelectedRange({ start: startOffset, end: endOffset, text: selectedText })
-    setShowPopover(true)
-    setSuggestionInput('')
-  }, [isEditing, editMode, annotations])
+    });
+    setSelectedRange({
+      start: startOffset,
+      end: endOffset,
+      text: selectedText,
+    });
+    setShowPopover(true);
+    setSuggestionInput("");
+  }, [isEditing, editMode, annotations]);
 
   const handleAddAnnotation = () => {
-    if (!selectedRange || !suggestionInput.trim()) return
+    if (!selectedRange || !suggestionInput.trim()) return;
 
     const newAnnotation: Annotation = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -765,27 +990,31 @@ function ProposalCard({
       end: selectedRange.end,
       text: selectedRange.text,
       suggestion: suggestionInput.trim(),
-    }
+    };
 
-    setAnnotations((prev) => [...prev, newAnnotation])
-    setShowPopover(false)
-    setSelectedRange(null)
-    setSuggestionInput('')
-    window.getSelection()?.removeAllRanges()
-  }
+    setAnnotations((prev) => [...prev, newAnnotation]);
+    setShowPopover(false);
+    setSelectedRange(null);
+    setSuggestionInput("");
+    window.getSelection()?.removeAllRanges();
+  };
 
   const handleRemoveAnnotation = (id: string) => {
-    setAnnotations((prev) => prev.filter((a) => a.id !== id))
-  }
+    setAnnotations((prev) => prev.filter((a) => a.id !== id));
+  };
 
-  const segments = getTextSegments(originalText, annotations)
+  const segments = getTextSegments(originalText, annotations);
 
   return (
     <TooltipProvider delayDuration={200}>
-      <Card className={cn(
-        "group transition-all",
-        isEditing ? "border-primary ring-1 ring-primary/20" : "hover:border-primary/30"
-      )}>
+      <Card
+        className={cn(
+          "group transition-all",
+          isEditing
+            ? "border-primary ring-1 ring-primary/20"
+            : "hover:border-primary/30",
+        )}
+      >
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-2 mb-2">
             <span className="inline-block text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
@@ -794,9 +1023,10 @@ function ProposalCard({
             <div className="flex items-center gap-1">
               {isEditing ? (
                 <>
-                  {editMode === 'annotate' && annotations.length > 0 && (
+                  {editMode === "annotate" && annotations.length > 0 && (
                     <span className="text-xs text-muted-foreground mr-2">
-                      {annotations.length} suggestion{annotations.length !== 1 ? 's' : ''}
+                      {annotations.length} suggestion
+                      {annotations.length !== 1 ? "s" : ""}
                     </span>
                   )}
                   <Button
@@ -859,24 +1089,24 @@ function ProposalCard({
               {/* Mode Toggle */}
               <div className="flex gap-1 p-0.5 bg-muted rounded-md w-fit">
                 <button
-                  onClick={() => setEditMode('annotate')}
+                  onClick={() => setEditMode("annotate")}
                   className={cn(
                     "px-2.5 py-1 text-xs font-medium rounded transition-colors",
-                    editMode === 'annotate'
+                    editMode === "annotate"
                       ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <MessageSquarePlus className="h-3 w-3 inline mr-1" />
                   Suggest
                 </button>
                 <button
-                  onClick={() => setEditMode('edit')}
+                  onClick={() => setEditMode("edit")}
                   className={cn(
                     "px-2.5 py-1 text-xs font-medium rounded transition-colors",
-                    editMode === 'edit'
+                    editMode === "edit"
                       ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <Pencil className="h-3 w-3 inline mr-1" />
@@ -884,14 +1114,14 @@ function ProposalCard({
                 </button>
               </div>
               <p className="text-xs text-muted-foreground">
-                {editMode === 'annotate'
-                  ? '✨ Select text to add suggestions. Hover over highlights to see or remove them.'
-                  : '✏️ Edit the text directly. Your changes will guide the AI regeneration.'}
+                {editMode === "annotate"
+                  ? "✨ Select text to add suggestions. Hover over highlights to see or remove them."
+                  : "✏️ Edit the text directly. Your changes will guide the AI regeneration."}
               </p>
             </div>
           )}
 
-          {isEditing && editMode === 'edit' ? (
+          {isEditing && editMode === "edit" ? (
             <Textarea
               value={editedText}
               onChange={(e) => setEditedText(e.target.value)}
@@ -903,30 +1133,31 @@ function ProposalCard({
               ref={textContainerRef}
               className={cn(
                 "whitespace-pre-wrap leading-relaxed relative",
-                isEditing && editMode === 'annotate' && "cursor-text select-text"
+                isEditing &&
+                  editMode === "annotate" &&
+                  "cursor-text select-text",
               )}
               onMouseUp={handleMouseUp}
             >
-              {segments.map((segment, i) => (
+              {segments.map((segment, i) =>
                 segment.annotation ? (
                   <Tooltip key={segment.annotation.id}>
                     <TooltipTrigger asChild>
-                      <span
-                        className="bg-yellow-500/30 border-b-2 border-yellow-500 cursor-pointer hover:bg-yellow-500/40 transition-colors"
-                      >
+                      <span className="bg-yellow-500/30 border-b-2 border-yellow-500 cursor-pointer hover:bg-yellow-500/40 transition-colors">
                         {segment.text}
                       </span>
                     </TooltipTrigger>
-                    <TooltipContent
-                      side="top"
-                      className="max-w-xs"
-                    >
+                    <TooltipContent side="top" className="max-w-xs">
                       <div className="space-y-2">
-                        <p className="text-sm">{segment.annotation.suggestion}</p>
+                        <p className="text-sm">
+                          {segment.annotation.suggestion}
+                        </p>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemoveAnnotation(segment.annotation!.id)}
+                          onClick={() =>
+                            handleRemoveAnnotation(segment.annotation!.id)
+                          }
                           className="h-6 px-2 text-xs text-destructive hover:text-destructive"
                         >
                           <Trash2 className="h-3 w-3 mr-1" />
@@ -937,8 +1168,8 @@ function ProposalCard({
                   </Tooltip>
                 ) : (
                   <span key={i}>{segment.text}</span>
-                )
-              ))}
+                ),
+              )}
 
               {/* Annotation Popover */}
               {showPopover && selectedRange && (
@@ -947,13 +1178,18 @@ function ProposalCard({
                   style={{
                     left: `${popoverPosition.x}px`,
                     top: `${popoverPosition.y}px`,
-                    transform: 'translateX(-50%)'
+                    transform: "translateX(-50%)",
                   }}
                 >
                   <div className="bg-popover border rounded-lg shadow-lg p-3 w-64">
                     <div className="space-y-2">
                       <p className="text-xs text-muted-foreground">
-                        Selected: "<span className="font-medium text-foreground">{selectedRange.text.slice(0, 30)}{selectedRange.text.length > 30 ? '...' : ''}</span>"
+                        Selected: "
+                        <span className="font-medium text-foreground">
+                          {selectedRange.text.slice(0, 30)}
+                          {selectedRange.text.length > 30 ? "..." : ""}
+                        </span>
+                        "
                       </p>
                       <Input
                         value={suggestionInput}
@@ -962,12 +1198,12 @@ function ProposalCard({
                         className="h-8 text-sm"
                         autoFocus
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && suggestionInput.trim()) {
-                            handleAddAnnotation()
+                          if (e.key === "Enter" && suggestionInput.trim()) {
+                            handleAddAnnotation();
                           }
-                          if (e.key === 'Escape') {
-                            setShowPopover(false)
-                            setSelectedRange(null)
+                          if (e.key === "Escape") {
+                            setShowPopover(false);
+                            setSelectedRange(null);
                           }
                         }}
                       />
@@ -985,8 +1221,8 @@ function ProposalCard({
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setShowPopover(false)
-                            setSelectedRange(null)
+                            setShowPopover(false);
+                            setSelectedRange(null);
                           }}
                           className="h-7 text-xs"
                         >
@@ -1002,162 +1238,177 @@ function ProposalCard({
         </CardContent>
       </Card>
     </TooltipProvider>
-  )
+  );
 }
 
 // Thread Card Component with Annotation System and Live Edit
 function ThreadCard({
   content,
   onRegenerate,
-  isRegenerating
+  isRegenerating,
 }: {
-  content: string[]
-  onRegenerate?: (suggestions: string, specificType: string) => void
-  isRegenerating?: boolean
+  content: string[];
+  onRegenerate?: (suggestions: string, specificType: string) => void;
+  isRegenerating?: boolean;
 }) {
-  const [copied, setCopied] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editMode, setEditMode] = useState<EditMode>('annotate')
-  const [editedTweets, setEditedTweets] = useState<string[]>([])
+  const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editMode, setEditMode] = useState<EditMode>("annotate");
+  const [editedTweets, setEditedTweets] = useState<string[]>([]);
   // Store annotations per tweet index
-  const [tweetAnnotations, setTweetAnnotations] = useState<Map<number, Annotation[]>>(new Map())
-  const [activePopover, setActivePopover] = useState<{ tweetIndex: number; position: { x: number; y: number }; range: { start: number; end: number; text: string } } | null>(null)
-  const [suggestionInput, setSuggestionInput] = useState('')
-  const tweetRefs = useRef<(HTMLDivElement | null)[]>([])
+  const [tweetAnnotations, setTweetAnnotations] = useState<
+    Map<number, Annotation[]>
+  >(new Map());
+  const [activePopover, setActivePopover] = useState<{
+    tweetIndex: number;
+    position: { x: number; y: number };
+    range: { start: number; end: number; text: string };
+  } | null>(null);
+  const [suggestionInput, setSuggestionInput] = useState("");
+  const tweetRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const handleCopy = async () => {
-    const textToCopy = editMode === 'edit' && editedTweets.length > 0
-      ? editedTweets.join('\n\n---\n\n')
-      : content.join('\n\n---\n\n')
-    await navigator.clipboard.writeText(textToCopy)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+    const textToCopy =
+      editMode === "edit" && editedTweets.length > 0
+        ? editedTweets.join("\n\n---\n\n")
+        : content.join("\n\n---\n\n");
+    await navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleEdit = () => {
-    setIsEditing(true)
-    setEditMode('annotate')
-    setEditedTweets([...content])
-    setTweetAnnotations(new Map())
-  }
+    setIsEditing(true);
+    setEditMode("annotate");
+    setEditedTweets([...content]);
+    setTweetAnnotations(new Map());
+  };
 
   const handleCancel = () => {
-    setIsEditing(false)
-    setEditMode('annotate')
-    setEditedTweets([])
-    setTweetAnnotations(new Map())
-    setActivePopover(null)
-    setSuggestionInput('')
-  }
+    setIsEditing(false);
+    setEditMode("annotate");
+    setEditedTweets([]);
+    setTweetAnnotations(new Map());
+    setActivePopover(null);
+    setSuggestionInput("");
+  };
 
   const handleRegenerate = () => {
-    if (!onRegenerate) return
+    if (!onRegenerate) return;
 
-    if (editMode === 'annotate') {
+    if (editMode === "annotate") {
       // Combine all annotations from all tweets
-      const allSuggestions: string[] = []
+      const allSuggestions: string[] = [];
       tweetAnnotations.forEach((annotations, tweetIndex) => {
         if (annotations.length > 0) {
-          allSuggestions.push(`Tweet ${tweetIndex + 1}:`)
+          allSuggestions.push(`Tweet ${tweetIndex + 1}:`);
           annotations.forEach((a) => {
-            allSuggestions.push(`  - For "${a.text}": ${a.suggestion}`)
-          })
+            allSuggestions.push(`  - For "${a.text}": ${a.suggestion}`);
+          });
         }
-      })
+      });
       if (allSuggestions.length > 0) {
-        onRegenerate(allSuggestions.join('\n'), 'thread')
+        onRegenerate(allSuggestions.join("\n"), "thread");
       }
-    } else if (editMode === 'edit') {
-      const suggestions = `Improve this thread based on these edits:\n${editedTweets.map((t, i) => `Tweet ${i + 1}: ${t}`).join('\n\n')}`
-      onRegenerate(suggestions, 'thread')
+    } else if (editMode === "edit") {
+      const suggestions = `Improve this thread based on these edits:\n${editedTweets.map((t, i) => `Tweet ${i + 1}: ${t}`).join("\n\n")}`;
+      onRegenerate(suggestions, "thread");
     }
 
-    setIsEditing(false)
-    setEditedTweets([])
-    setTweetAnnotations(new Map())
-  }
+    setIsEditing(false);
+    setEditedTweets([]);
+    setTweetAnnotations(new Map());
+  };
 
   const getTotalAnnotations = () => {
-    let total = 0
+    let total = 0;
     tweetAnnotations.forEach((annotations) => {
-      total += annotations.length
-    })
-    return total
-  }
+      total += annotations.length;
+    });
+    return total;
+  };
 
   const handleTweetChange = (index: number, value: string) => {
-    const newTweets = [...editedTweets]
-    newTweets[index] = value
-    setEditedTweets(newTweets)
-  }
+    const newTweets = [...editedTweets];
+    newTweets[index] = value;
+    setEditedTweets(newTweets);
+  };
 
-  const hasEditChanges = editedTweets.some((t, i) => t !== content[i])
-  const totalAnnotations = getTotalAnnotations()
-  const canRegenerate = editMode === 'annotate' ? totalAnnotations > 0 : hasEditChanges
+  const hasEditChanges = editedTweets.some((t, i) => t !== content[i]);
+  const totalAnnotations = getTotalAnnotations();
+  const canRegenerate =
+    editMode === "annotate" ? totalAnnotations > 0 : hasEditChanges;
 
-  const handleMouseUp = useCallback((tweetIndex: number) => {
-    if (!isEditing || editMode !== 'annotate') return
+  const handleMouseUp = useCallback(
+    (tweetIndex: number) => {
+      if (!isEditing || editMode !== "annotate") return;
 
-    const selection = window.getSelection()
-    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
-      return
-    }
-
-    const tweetRef = tweetRefs.current[tweetIndex]
-    if (!tweetRef) return
-
-    const selectedText = selection.toString().trim()
-    const range = selection.getRangeAt(0)
-
-    if (!tweetRef.contains(range.commonAncestorContainer)) {
-      return
-    }
-
-    // Calculate position
-    let startOffset = 0
-    const treeWalker = document.createTreeWalker(tweetRef, NodeFilter.SHOW_TEXT, null)
-
-    let node: Node | null
-    let found = false
-    while ((node = treeWalker.nextNode())) {
-      if (node === range.startContainer) {
-        startOffset += range.startOffset
-        found = true
-        break
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+        return;
       }
-      startOffset += (node.textContent?.length || 0)
-    }
 
-    if (!found) return
+      const tweetRef = tweetRefs.current[tweetIndex];
+      if (!tweetRef) return;
 
-    const endOffset = startOffset + range.toString().length
+      const selectedText = selection.toString().trim();
+      const range = selection.getRangeAt(0);
 
-    // Check for overlapping annotations
-    const existingAnnotations = tweetAnnotations.get(tweetIndex) || []
-    const hasOverlap = existingAnnotations.some(
-      (a) => (startOffset < a.end && endOffset > a.start)
-    )
-    if (hasOverlap) {
-      selection.removeAllRanges()
-      return
-    }
+      if (!tweetRef.contains(range.commonAncestorContainer)) {
+        return;
+      }
 
-    const rect = range.getBoundingClientRect()
-    const containerRect = tweetRef.getBoundingClientRect()
+      // Calculate position
+      let startOffset = 0;
+      const treeWalker = document.createTreeWalker(
+        tweetRef,
+        NodeFilter.SHOW_TEXT,
+        null,
+      );
 
-    setActivePopover({
-      tweetIndex,
-      position: {
-        x: rect.left - containerRect.left + rect.width / 2,
-        y: rect.bottom - containerRect.top + 8,
-      },
-      range: { start: startOffset, end: endOffset, text: selectedText }
-    })
-    setSuggestionInput('')
-  }, [isEditing, editMode, tweetAnnotations])
+      let node: Node | null;
+      let found = false;
+      while ((node = treeWalker.nextNode())) {
+        if (node === range.startContainer) {
+          startOffset += range.startOffset;
+          found = true;
+          break;
+        }
+        startOffset += node.textContent?.length || 0;
+      }
+
+      if (!found) return;
+
+      const endOffset = startOffset + range.toString().length;
+
+      // Check for overlapping annotations
+      const existingAnnotations = tweetAnnotations.get(tweetIndex) || [];
+      const hasOverlap = existingAnnotations.some(
+        (a) => startOffset < a.end && endOffset > a.start,
+      );
+      if (hasOverlap) {
+        selection.removeAllRanges();
+        return;
+      }
+
+      const rect = range.getBoundingClientRect();
+      const containerRect = tweetRef.getBoundingClientRect();
+
+      setActivePopover({
+        tweetIndex,
+        position: {
+          x: rect.left - containerRect.left + rect.width / 2,
+          y: rect.bottom - containerRect.top + 8,
+        },
+        range: { start: startOffset, end: endOffset, text: selectedText },
+      });
+      setSuggestionInput("");
+    },
+    [isEditing, editMode, tweetAnnotations],
+  );
 
   const handleAddAnnotation = () => {
-    if (!activePopover || !suggestionInput.trim()) return
+    if (!activePopover || !suggestionInput.trim()) return;
 
     const newAnnotation: Annotation = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -1165,34 +1416,41 @@ function ThreadCard({
       end: activePopover.range.end,
       text: activePopover.range.text,
       suggestion: suggestionInput.trim(),
-    }
+    };
 
     setTweetAnnotations((prev) => {
-      const newMap = new Map(prev)
-      const existing = newMap.get(activePopover.tweetIndex) || []
-      newMap.set(activePopover.tweetIndex, [...existing, newAnnotation])
-      return newMap
-    })
-    setActivePopover(null)
-    setSuggestionInput('')
-    window.getSelection()?.removeAllRanges()
-  }
+      const newMap = new Map(prev);
+      const existing = newMap.get(activePopover.tweetIndex) || [];
+      newMap.set(activePopover.tweetIndex, [...existing, newAnnotation]);
+      return newMap;
+    });
+    setActivePopover(null);
+    setSuggestionInput("");
+    window.getSelection()?.removeAllRanges();
+  };
 
   const handleRemoveAnnotation = (tweetIndex: number, annotationId: string) => {
     setTweetAnnotations((prev) => {
-      const newMap = new Map(prev)
-      const existing = newMap.get(tweetIndex) || []
-      newMap.set(tweetIndex, existing.filter((a) => a.id !== annotationId))
-      return newMap
-    })
-  }
+      const newMap = new Map(prev);
+      const existing = newMap.get(tweetIndex) || [];
+      newMap.set(
+        tweetIndex,
+        existing.filter((a) => a.id !== annotationId),
+      );
+      return newMap;
+    });
+  };
 
   return (
     <TooltipProvider delayDuration={200}>
-      <Card className={cn(
-        "group transition-all",
-        isEditing ? "border-primary ring-1 ring-primary/20" : "hover:border-primary/30"
-      )}>
+      <Card
+        className={cn(
+          "group transition-all",
+          isEditing
+            ? "border-primary ring-1 ring-primary/20"
+            : "hover:border-primary/30",
+        )}
+      >
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-2 mb-3">
             <span className="inline-block text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
@@ -1201,9 +1459,10 @@ function ThreadCard({
             <div className="flex items-center gap-1">
               {isEditing ? (
                 <>
-                  {editMode === 'annotate' && totalAnnotations > 0 && (
+                  {editMode === "annotate" && totalAnnotations > 0 && (
                     <span className="text-xs text-muted-foreground mr-2">
-                      {totalAnnotations} suggestion{totalAnnotations !== 1 ? 's' : ''}
+                      {totalAnnotations} suggestion
+                      {totalAnnotations !== 1 ? "s" : ""}
                     </span>
                   )}
                   <Button
@@ -1266,24 +1525,24 @@ function ThreadCard({
               {/* Mode Toggle */}
               <div className="flex gap-1 p-0.5 bg-muted rounded-md w-fit">
                 <button
-                  onClick={() => setEditMode('annotate')}
+                  onClick={() => setEditMode("annotate")}
                   className={cn(
                     "px-2.5 py-1 text-xs font-medium rounded transition-colors",
-                    editMode === 'annotate'
+                    editMode === "annotate"
                       ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <MessageSquarePlus className="h-3 w-3 inline mr-1" />
                   Suggest
                 </button>
                 <button
-                  onClick={() => setEditMode('edit')}
+                  onClick={() => setEditMode("edit")}
                   className={cn(
                     "px-2.5 py-1 text-xs font-medium rounded transition-colors",
-                    editMode === 'edit'
+                    editMode === "edit"
                       ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <Pencil className="h-3 w-3 inline mr-1" />
@@ -1291,17 +1550,17 @@ function ThreadCard({
                 </button>
               </div>
               <p className="text-xs text-muted-foreground">
-                {editMode === 'annotate'
-                  ? '✨ Select text in any tweet to add suggestions. Hover over highlights to see or remove them.'
-                  : '✏️ Edit the tweets directly. Your changes will guide the AI regeneration.'}
+                {editMode === "annotate"
+                  ? "✨ Select text in any tweet to add suggestions. Hover over highlights to see or remove them."
+                  : "✏️ Edit the tweets directly. Your changes will guide the AI regeneration."}
               </p>
             </div>
           )}
 
           <div className="space-y-3">
             {content.map((tweet, i) => {
-              const annotations = tweetAnnotations.get(i) || []
-              const segments = getTextSegments(tweet, annotations)
+              const annotations = tweetAnnotations.get(i) || [];
+              const segments = getTextSegments(tweet, annotations);
 
               return (
                 <div key={i} className="flex gap-3">
@@ -1314,38 +1573,47 @@ function ThreadCard({
                     )}
                   </div>
 
-                  {isEditing && editMode === 'edit' ? (
+                  {isEditing && editMode === "edit" ? (
                     <Textarea
-                      value={editedTweets[i] || ''}
+                      value={editedTweets[i] || ""}
                       onChange={(e) => handleTweetChange(i, e.target.value)}
                       className="flex-1 text-sm min-h-[60px] resize-none leading-relaxed"
                     />
                   ) : (
                     <div
-                      ref={(el) => { tweetRefs.current[i] = el }}
+                      ref={(el) => {
+                        tweetRefs.current[i] = el;
+                      }}
                       className={cn(
                         "flex-1 text-sm leading-relaxed pb-2 relative",
-                        isEditing && editMode === 'annotate' && "cursor-text select-text"
+                        isEditing &&
+                          editMode === "annotate" &&
+                          "cursor-text select-text",
                       )}
                       onMouseUp={() => handleMouseUp(i)}
                     >
-                      {segments.map((segment, j) => (
+                      {segments.map((segment, j) =>
                         segment.annotation ? (
                           <Tooltip key={segment.annotation.id}>
                             <TooltipTrigger asChild>
-                              <span
-                                className="bg-yellow-500/30 border-b-2 border-yellow-500 cursor-pointer hover:bg-yellow-500/40 transition-colors"
-                              >
+                              <span className="bg-yellow-500/30 border-b-2 border-yellow-500 cursor-pointer hover:bg-yellow-500/40 transition-colors">
                                 {segment.text}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-xs">
                               <div className="space-y-2">
-                                <p className="text-sm">{segment.annotation.suggestion}</p>
+                                <p className="text-sm">
+                                  {segment.annotation.suggestion}
+                                </p>
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => handleRemoveAnnotation(i, segment.annotation!.id)}
+                                  onClick={() =>
+                                    handleRemoveAnnotation(
+                                      i,
+                                      segment.annotation!.id,
+                                    )
+                                  }
                                   className="h-6 px-2 text-xs text-destructive hover:text-destructive"
                                 >
                                   <Trash2 className="h-3 w-3 mr-1" />
@@ -1356,8 +1624,8 @@ function ThreadCard({
                           </Tooltip>
                         ) : (
                           <span key={j}>{segment.text}</span>
-                        )
-                      ))}
+                        ),
+                      )}
 
                       {/* Annotation Popover for this tweet */}
                       {activePopover && activePopover.tweetIndex === i && (
@@ -1366,26 +1634,38 @@ function ThreadCard({
                           style={{
                             left: `${activePopover.position.x}px`,
                             top: `${activePopover.position.y}px`,
-                            transform: 'translateX(-50%)'
+                            transform: "translateX(-50%)",
                           }}
                         >
                           <div className="bg-popover border rounded-lg shadow-lg p-3 w-64">
                             <div className="space-y-2">
                               <p className="text-xs text-muted-foreground">
-                                Selected: "<span className="font-medium text-foreground">{activePopover.range.text.slice(0, 30)}{activePopover.range.text.length > 30 ? '...' : ''}</span>"
+                                Selected: "
+                                <span className="font-medium text-foreground">
+                                  {activePopover.range.text.slice(0, 30)}
+                                  {activePopover.range.text.length > 30
+                                    ? "..."
+                                    : ""}
+                                </span>
+                                "
                               </p>
                               <Input
                                 value={suggestionInput}
-                                onChange={(e) => setSuggestionInput(e.target.value)}
+                                onChange={(e) =>
+                                  setSuggestionInput(e.target.value)
+                                }
                                 placeholder="Add your suggestion..."
                                 className="h-8 text-sm"
                                 autoFocus
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter' && suggestionInput.trim()) {
-                                    handleAddAnnotation()
+                                  if (
+                                    e.key === "Enter" &&
+                                    suggestionInput.trim()
+                                  ) {
+                                    handleAddAnnotation();
                                   }
-                                  if (e.key === 'Escape') {
-                                    setActivePopover(null)
+                                  if (e.key === "Escape") {
+                                    setActivePopover(null);
                                   }
                                 }}
                               />
@@ -1415,11 +1695,11 @@ function ThreadCard({
                     </div>
                   )}
                 </div>
-              )
+              );
             })}
           </div>
         </CardContent>
       </Card>
     </TooltipProvider>
-  )
+  );
 }
