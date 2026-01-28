@@ -126,6 +126,8 @@ def analyze_profile_health(
             "metrics": result.metrics,
             "recommendations": result.recommendations,
             "steps": result.steps,
+            "cadence_plan": result.cadence_plan,
+            "cadence_goals": result.cadence_goals,
         }
     finally:
         if twitter_client:

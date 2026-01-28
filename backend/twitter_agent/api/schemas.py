@@ -127,6 +127,8 @@ class HealthResponse(BaseModel):
     metrics: dict[str, Any]
     recommendations: list[dict[str, Any]]
     steps: list[str]
+    cadence_plan: dict[str, Any]
+    cadence_goals: dict[str, list[str]]
 
 
 class CacheInfoResponse(BaseModel):

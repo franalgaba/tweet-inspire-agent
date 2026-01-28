@@ -76,6 +76,16 @@ export interface HealthResponse {
     actions: string[]
   }>
   steps: string[]
+  cadence_plan: {
+    target_posts_per_week: number
+    format_mix: Array<{ format: string; count: number }>
+  }
+  cadence_goals: {
+    daily: string[]
+    weekly: string[]
+    monthly: string[]
+    focus: string[]
+  }
 }
 
 // Progress event from SSE stream

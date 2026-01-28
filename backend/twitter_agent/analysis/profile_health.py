@@ -76,6 +76,8 @@ class ProfileHealthResult:
     metrics: dict[str, float | int | str | list[int]]
     recommendations: list[dict[str, object]]
     steps: list[str]
+    cadence_plan: dict[str, object]
+    cadence_goals: dict[str, list[str]]
 
 
 def score_profile_health(
@@ -151,6 +153,8 @@ def score_profile_health(
 
     recommendations = _build_recommendations(scores, metrics)
     steps = _build_steps(scores, metrics)
+    cadence_plan = _derive_cadence_plan(scores)
+    cadence_goals = _build_cadence_goals(scores, metrics, cadence_plan)
 
     return ProfileHealthResult(
         username=username,
@@ -159,6 +163,8 @@ def score_profile_health(
         metrics=metrics,
         recommendations=recommendations,
         steps=steps,
+        cadence_plan=cadence_plan,
+        cadence_goals=cadence_goals,
     )
 
 
@@ -357,6 +363,112 @@ def _weighted_overall(scores: dict[str, float]) -> float:
     total = sum(weights.values())
     score = sum(scores.get(key, 0.5) * weight for key, weight in weights.items())
     return round((score / max(total, 1e-6)) * 100, 1)
+
+
+def _derive_cadence_plan(scores: dict[str, float]) -> dict[str, object]:
+    cadence_score = scores.get("cadence", 0.7)
+    if cadence_score < 0.4:
+        target_posts_per_week = 3
+    elif cadence_score < 0.7:
+        target_posts_per_week = 5
+    else:
+        target_posts_per_week = 7
+
+    mix = {
+        "tweet": 0.4,
+        "thread": 0.2,
+        "reply": 0.25,
+        "quote": 0.15,
+    }
+
+    if scores.get("shareability", 1.0) < 0.6:
+        mix["thread"] += 0.2
+        mix["tweet"] -= 0.1
+    if scores.get("conversation_balance", 1.0) < 0.6:
+        mix["reply"] += 0.15
+        mix["quote"] += 0.05
+        mix["tweet"] -= 0.1
+    if scores.get("format_fit", 1.0) < 0.6:
+        mix["tweet"] += 0.1
+    if scores.get("topic_focus", 1.0) < 0.6:
+        mix["thread"] += 0.1
+
+    total = sum(mix.values()) or 1.0
+    normalized = {key: value / total for key, value in mix.items()}
+
+    format_mix = [
+        {"format": key, "count": max(1, round(value * target_posts_per_week))}
+        for key, value in normalized.items()
+    ]
+
+    count_sum = sum(entry["count"] for entry in format_mix)
+    format_mix.sort(key=lambda x: x["count"], reverse=True)
+    while count_sum > target_posts_per_week:
+        for entry in format_mix:
+            if entry["count"] > 1 and count_sum > target_posts_per_week:
+                entry["count"] -= 1
+                count_sum -= 1
+    while count_sum < target_posts_per_week:
+        format_mix[0]["count"] += 1
+        count_sum += 1
+
+    return {
+        "target_posts_per_week": target_posts_per_week,
+        "format_mix": format_mix,
+    }
+
+
+def _build_cadence_goals(
+    scores: dict[str, float],
+    metrics: dict[str, float | int | str | list[int]],
+    cadence_plan: dict[str, object],
+) -> dict[str, list[str]]:
+    target_posts_per_week = int(cadence_plan.get("target_posts_per_week", 5))
+    daily: list[str] = []
+
+    if target_posts_per_week <= 3:
+        daily.append("Post every other day")
+    elif target_posts_per_week <= 5:
+        daily.append("Post 5 days per week")
+    else:
+        daily.append("Post daily")
+
+    if scores.get("conversation_balance", 1.0) < 0.6:
+        daily.append("Reply to 2–3 niche posts")
+    else:
+        daily.append("Reply to 1–2 niche posts")
+
+    weekly = []
+    for entry in cadence_plan.get("format_mix", []):
+        count = entry.get("count", 0)
+        format_name = entry.get("format", "post")
+        if count:
+            weekly.append(f"{count} {format_name}{'s' if count > 1 else ''}")
+    if scores.get("shareability", 1.0) < 0.6:
+        weekly.append("1 framework or checklist")
+
+    monthly = [
+        f"{target_posts_per_week * 4} total posts (approx.)",
+        "2 content experiments (new angle or format)",
+        "Review top 5 posts and double down on winners",
+    ]
+
+    focus = []
+    if scores.get("shareability", 1.0) < 0.6:
+        focus.append("Increase shareability")
+    if scores.get("conversation_balance", 1.0) < 0.6:
+        focus.append("More conversation posts")
+    if scores.get("topic_focus", 1.0) < 0.6:
+        focus.append("Tighter topic focus")
+    if scores.get("cadence", 1.0) < 0.6:
+        focus.append("Consistency")
+    if scores.get("format_fit", 1.0) < 0.6:
+        focus.append("Tighter formatting")
+
+    if not focus:
+        focus.append("Maintain consistency and test new angles")
+
+    return {"daily": daily, "weekly": weekly, "monthly": monthly, "focus": focus}
 
 
 def _build_recommendations(

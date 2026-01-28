@@ -72,6 +72,7 @@ export const Route = createFileRoute("/")({
   component: InspirePage,
 });
 
+
 function InspirePage() {
   const [result, setResult] = useState<InspireResponse | null>(null);
   const [regeneratedProposals, setRegeneratedProposals] = useState<
@@ -213,6 +214,7 @@ function InspirePage() {
       setHealthLoading(false);
     }
   };
+
 
   const handleRegenerate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -954,6 +956,9 @@ function ProfileHealthCard({ result }: { result: HealthResponse }) {
 
   const metrics = result.metrics || {};
 
+  const cadencePlan = result.cadence_plan;
+  const cadenceGoals = result.cadence_goals;
+
   return (
     <div className="space-y-5">
       <div className="grid md:grid-cols-2 gap-4">
@@ -1055,6 +1060,49 @@ function ProfileHealthCard({ result }: { result: HealthResponse }) {
             {result.steps.map((step, i) => (
               <div key={i}>• {step}</div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {cadencePlan && cadenceGoals && (
+        <div className="space-y-3">
+          <div className="text-sm font-semibold">Cadence Goals</div>
+          <div className="rounded-lg border bg-muted/30 p-3 text-xs space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-foreground">Target cadence:</span>
+              <span>{cadencePlan.target_posts_per_week} posts/week</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="font-medium text-foreground">Format mix:</span>
+              {cadencePlan.format_mix.map((entry) => (
+                <span
+                  key={`${entry.format}-${entry.count}`}
+                  className="rounded-full border px-2 py-0.5"
+                >
+                  {entry.format} × {entry.count}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-3 text-xs">
+            <div className="rounded-lg border p-3 space-y-1">
+              <div className="font-medium text-muted-foreground">Daily</div>
+              {cadenceGoals.daily.map((goal, idx) => (
+                <div key={idx}>• {goal}</div>
+              ))}
+            </div>
+            <div className="rounded-lg border p-3 space-y-1">
+              <div className="font-medium text-muted-foreground">Weekly</div>
+              {cadenceGoals.weekly.map((goal, idx) => (
+                <div key={idx}>• {goal}</div>
+              ))}
+            </div>
+            <div className="rounded-lg border p-3 space-y-1">
+              <div className="font-medium text-muted-foreground">Monthly</div>
+              {cadenceGoals.monthly.map((goal, idx) => (
+                <div key={idx}>• {goal}</div>
+              ))}
+            </div>
           </div>
         </div>
       )}
