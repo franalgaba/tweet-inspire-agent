@@ -66,6 +66,21 @@ class ContentProposal(BaseModel):
     rationale: Optional[str] = Field(None, description="Why this content was proposed")
     based_on: list[str] = Field(default_factory=list, description="Sources used (analytics, calendar, content)")
     engagement_prediction: Optional[dict[str, Any]] = None
+    virality_score: Optional[float] = Field(
+        None, description="Heuristic score (0-100) estimating potential reach"
+    )
+    virality_breakdown: Optional[dict[str, float]] = Field(
+        None, description="Component scores (0-1) used to compute virality"
+    )
+    virality_notes: Optional[list[str]] = Field(
+        None, description="Short notes highlighting strengths or risks"
+    )
+    health_impact: Optional[list[dict[str, Any]]] = Field(
+        None, description="Estimated impact on health metrics"
+    )
+    followup_formats: Optional[list[str]] = Field(
+        None, description="Suggested follow-up content formats"
+    )
 
 
 class CalendarEvent(BaseModel):
@@ -76,4 +91,3 @@ class CalendarEvent(BaseModel):
     description: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     content_suggestions: list[str] = Field(default_factory=list)
-

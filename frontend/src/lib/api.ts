@@ -24,13 +24,24 @@ export interface InspireResponse {
     created_at?: string
   }
   proposals: {
-    quote?: Array<{ content: string | string[]; suggested_date?: string; based_on?: string[] }>
-    tweet?: Array<{ content: string | string[]; suggested_date?: string; based_on?: string[] }>
-    reply?: Array<{ content: string | string[]; suggested_date?: string; based_on?: string[] }>
-    thread?: Array<{ content: string[]; suggested_date?: string; based_on?: string[] }>
+    quote?: Array<Proposal>
+    tweet?: Array<Proposal>
+    reply?: Array<Proposal>
+    thread?: Array<Proposal>
   }
   research_id?: string
   prompt?: string
+}
+
+export interface Proposal {
+  content: string | string[]
+  suggested_date?: string
+  based_on?: string[]
+  virality_score?: number
+  virality_breakdown?: Record<string, number>
+  virality_notes?: string[]
+  health_impact?: Array<{ metric: string; delta: number; reason: string }>
+  followup_formats?: string[]
 }
 
 export interface RegenerateRequest {
@@ -44,6 +55,27 @@ export interface RegenerateRequest {
 
 export interface RegenerateResponse {
   proposals: InspireResponse['proposals']
+}
+
+export interface HealthRequest {
+  username: string
+  profile_file?: string
+  max_tweets?: number
+  prefer_cache_only?: boolean
+}
+
+export interface HealthResponse {
+  username: string
+  overall_score: number
+  scores: Record<string, number>
+  metrics: Record<string, any>
+  recommendations: Array<{
+    title: string
+    priority: string
+    why: string
+    actions: string[]
+  }>
+  steps: string[]
 }
 
 // Progress event from SSE stream
@@ -229,6 +261,15 @@ export async function inspireWithProgress(
   return finalResult
 }
 
+export async function fetchProfileHealth(
+  data: HealthRequest
+): Promise<HealthResponse> {
+  return request<HealthResponse>('/health', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
 // API Client
 export const api = {
   // Inspire - generate content from a tweet (non-streaming)
@@ -244,6 +285,13 @@ export const api = {
   // Regenerate - regenerate content with different settings
   regenerate: (data: RegenerateRequest): Promise<RegenerateResponse> =>
     request('/inspire/regenerate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Profile health
+  profileHealth: (data: HealthRequest): Promise<HealthResponse> =>
+    request('/health', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

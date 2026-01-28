@@ -26,6 +26,7 @@ import {
   inspireWithProgress,
   type InspireRequest,
   type InspireResponse,
+  type HealthResponse,
   type RegenerateRequest,
   type ProgressEvent,
 } from "~/lib/api";
@@ -79,6 +80,10 @@ function InspirePage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [healthResult, setHealthResult] = useState<HealthResponse | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const [healthUsername, setHealthUsername] = useState("");
   const [currentProgress, setCurrentProgress] = useState<ProgressEvent | null>(
     null,
   );
@@ -185,6 +190,27 @@ function InspirePage() {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleHealthAnalyze = async () => {
+    if (!healthUsername.trim()) {
+      setHealthError("Please enter a username to analyze.");
+      return;
+    }
+    setHealthLoading(true);
+    setHealthError(null);
+    try {
+      const response = await api.profileHealth({
+        username: healthUsername.trim(),
+        max_tweets: 200,
+        prefer_cache_only: false,
+      });
+      setHealthResult(response);
+    } catch (err) {
+      setHealthError(err instanceof Error ? err.message : "Failed to analyze.");
+    } finally {
+      setHealthLoading(false);
     }
   };
 
@@ -590,6 +616,64 @@ function InspirePage() {
         </Alert>
       )}
 
+      {/* Profile Health */}
+      <Card className="border-border/50">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold">Profile Health</h3>
+              <p className="text-sm text-muted-foreground">
+                Score your profile’s reach potential and get actionable next
+                steps.
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={handleHealthAnalyze}
+              disabled={healthLoading}
+              variant="secondary"
+            >
+              {healthLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Zap className="mr-2 h-4 w-4" />
+                  Analyze Health
+                </>
+              )}
+            </Button>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="health_username" className="text-sm">
+              Username to analyze
+            </Label>
+            <Input
+              id="health_username"
+              value={healthUsername}
+              onChange={(e) => setHealthUsername(e.target.value)}
+              placeholder="username (without @)"
+              className="h-10"
+              disabled={healthLoading}
+            />
+          </div>
+
+          {healthError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{healthError}</AlertDescription>
+            </Alert>
+          )}
+
+          {healthResult && (
+            <ProfileHealthCard result={healthResult} />
+          )}
+        </CardContent>
+      </Card>
+
       {/* Results */}
       {result && (
         <div ref={resultsRef} className="space-y-6 animate-fade-in">
@@ -625,6 +709,10 @@ function InspirePage() {
               <Zap className="h-5 w-5 text-primary" />
               Generated Content
             </h3>
+            <p className="text-xs text-muted-foreground">
+              Optimized for engagement signals (replies, shares, clicks, dwell)
+              while avoiding bait. Each card shows a virality score.
+            </p>
 
             {displayProposals?.quote?.map((proposal, i) => (
               <ProposalCard
@@ -632,6 +720,10 @@ function InspirePage() {
                 type="Quote Tweet"
                 content={proposal.content}
                 contentType="quote"
+                viralityScore={proposal.virality_score}
+                viralityNotes={proposal.virality_notes}
+                healthImpact={proposal.health_impact}
+                followupFormats={proposal.followup_formats}
                 onRegenerate={handleInlineRegenerate}
                 isRegenerating={regenerateMutation.isPending}
               />
@@ -643,6 +735,10 @@ function InspirePage() {
                 type="Tweet"
                 content={proposal.content}
                 contentType="tweet"
+                viralityScore={proposal.virality_score}
+                viralityNotes={proposal.virality_notes}
+                healthImpact={proposal.health_impact}
+                followupFormats={proposal.followup_formats}
                 onRegenerate={handleInlineRegenerate}
                 isRegenerating={regenerateMutation.isPending}
               />
@@ -654,6 +750,10 @@ function InspirePage() {
                 type="Reply"
                 content={proposal.content}
                 contentType="reply"
+                viralityScore={proposal.virality_score}
+                viralityNotes={proposal.virality_notes}
+                healthImpact={proposal.health_impact}
+                followupFormats={proposal.followup_formats}
                 onRegenerate={handleInlineRegenerate}
                 isRegenerating={regenerateMutation.isPending}
               />
@@ -663,6 +763,10 @@ function InspirePage() {
               <ThreadCard
                 key={`thread-${i}`}
                 content={proposal.content}
+                viralityScore={proposal.virality_score}
+                viralityNotes={proposal.virality_notes}
+                healthImpact={proposal.health_impact}
+                followupFormats={proposal.followup_formats}
                 onRegenerate={handleInlineRegenerate}
                 isRegenerating={regenerateMutation.isPending}
               />
@@ -783,6 +887,181 @@ function OriginalTweet({
   );
 }
 
+function ViralityRow({
+  score,
+  notes,
+}: {
+  score?: number;
+  notes?: string[];
+}) {
+  if (typeof score !== "number") return null;
+  const clamped = Math.max(0, Math.min(100, Math.round(score)));
+  const barClass =
+    clamped >= 80
+      ? "bg-emerald-500"
+      : clamped >= 60
+        ? "bg-amber-500"
+        : "bg-rose-500";
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span>Virality</span>
+        <div className="h-1.5 w-24 rounded bg-muted">
+          <div
+            className={cn("h-1.5 rounded", barClass)}
+            style={{ width: `${clamped}%` }}
+          />
+        </div>
+        <span className="font-medium text-foreground">{clamped}</span>
+      </div>
+      {notes && notes.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {notes.slice(0, 4).map((note) => (
+            <span
+              key={note}
+              className="rounded bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+            >
+              {note}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileHealthCard({ result }: { result: HealthResponse }) {
+  const overall = Math.round(result.overall_score);
+  const overallColor =
+    overall >= 80 ? "bg-emerald-500" : overall >= 60 ? "bg-amber-500" : "bg-rose-500";
+
+  const labelMap: Record<string, string> = {
+    engagement_quality: "Engagement",
+    shareability: "Shareability",
+    cadence: "Cadence",
+    topic_focus: "Topic Focus",
+    format_fit: "Format Fit",
+    conversation_balance: "Conversations",
+    hashtag_hygiene: "Hashtags",
+    link_balance: "Links",
+    profile_completeness: "Profile",
+  };
+
+  const scoreEntries = Object.entries(result.scores || {}).sort(
+    (a, b) => b[1] - a[1],
+  );
+
+  const metrics = result.metrics || {};
+
+  return (
+    <div className="space-y-5">
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+          <div className="text-sm text-muted-foreground">Overall Health</div>
+          <div className="flex items-center gap-3">
+            <div className="h-2 w-full rounded bg-muted">
+              <div
+                className={cn("h-2 rounded", overallColor)}
+                style={{ width: `${Math.max(0, Math.min(100, overall))}%` }}
+              />
+            </div>
+            <span className="text-lg font-semibold">{overall}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Higher scores indicate stronger reach potential based on recent
+            activity.
+          </p>
+        </div>
+
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-2 text-sm">
+          <div className="text-sm text-muted-foreground">Key Metrics</div>
+          <div className="flex justify-between">
+            <span>Posts / week</span>
+            <span>{metrics.posts_per_week ?? "—"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Engagement rate</span>
+            <span>{metrics.engagement_rate ?? "—"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Avg length</span>
+            <span>{metrics.avg_length ?? "—"} chars</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Reply ratio</span>
+            <span>{metrics.reply_ratio ?? "—"}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-3">
+        {scoreEntries.map(([key, value]) => (
+          <div key={key} className="rounded-lg border px-3 py-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground">
+                {labelMap[key] || key}
+              </span>
+              <span className="font-medium">{Math.round(value * 100)}</span>
+            </div>
+            <div className="h-1.5 w-full rounded bg-muted mt-2">
+              <div
+                className={cn(
+                  "h-1.5 rounded",
+                  value >= 0.8
+                    ? "bg-emerald-500"
+                    : value >= 0.6
+                      ? "bg-amber-500"
+                      : "bg-rose-500",
+                )}
+                style={{ width: `${Math.max(0, Math.min(100, value * 100))}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {result.recommendations?.length > 0 && (
+        <div className="space-y-3">
+          <div className="text-sm font-semibold">Recommendations</div>
+          <div className="grid md:grid-cols-2 gap-3">
+            {result.recommendations.map((rec, idx) => (
+              <div
+                key={`${rec.title}-${idx}`}
+                className="rounded-lg border p-3 space-y-2"
+              >
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{rec.title}</span>
+                  <span className="text-xs text-muted-foreground capitalize">
+                    {rec.priority}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">{rec.why}</p>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {rec.actions?.slice(0, 3).map((action: string, i: number) => (
+                    <div key={i}>• {action}</div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {result.steps?.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-sm font-semibold">Next Steps</div>
+          <div className="rounded-lg border bg-muted/30 p-3 text-xs space-y-1">
+            {result.steps.map((step, i) => (
+              <div key={i}>• {step}</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Helper function to split text into segments based on annotations
 function getTextSegments(
   text: string,
@@ -841,12 +1120,20 @@ function ProposalCard({
   type,
   content,
   contentType,
+  viralityScore,
+  viralityNotes,
+  healthImpact,
+  followupFormats,
   onRegenerate,
   isRegenerating,
 }: {
   type: string;
   content: string | string[];
   contentType: string;
+  viralityScore?: number;
+  viralityNotes?: string[];
+  healthImpact?: Array<{ metric: string; delta: number; reason: string }>;
+  followupFormats?: string[];
   onRegenerate?: (suggestions: string, specificType: string) => void;
   isRegenerating?: boolean;
 }) {
@@ -1084,6 +1371,33 @@ function ProposalCard({
             </div>
           </div>
 
+          <ViralityRow score={viralityScore} notes={viralityNotes} />
+
+          {healthImpact && healthImpact.length > 0 && (
+            <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+              <div className="font-medium text-foreground">Health impact</div>
+              {healthImpact.slice(0, 2).map((item, idx) => (
+                <div key={`${item.metric}-${idx}`} className="flex gap-2">
+                  <span className="font-medium text-foreground">
+                    {item.delta >= 0 ? "+" : ""}
+                    {Math.round(item.delta * 100)}%
+                  </span>
+                  <span className="capitalize">{item.metric.replace("_", " ")}</span>
+                  <span>— {item.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {followupFormats && followupFormats.length > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">
+                Follow-up formats:
+              </span>{" "}
+              {followupFormats.slice(0, 3).join(", ")}
+            </div>
+          )}
+
           {isEditing && (
             <div className="mb-3 space-y-2">
               {/* Mode Toggle */}
@@ -1244,13 +1558,22 @@ function ProposalCard({
 // Thread Card Component with Annotation System and Live Edit
 function ThreadCard({
   content,
+  viralityScore,
+  viralityNotes,
+  healthImpact,
+  followupFormats,
   onRegenerate,
   isRegenerating,
 }: {
-  content: string[];
+  content: string | string[];
+  viralityScore?: number;
+  viralityNotes?: string[];
+  healthImpact?: Array<{ metric: string; delta: number; reason: string }>;
+  followupFormats?: string[];
   onRegenerate?: (suggestions: string, specificType: string) => void;
   isRegenerating?: boolean;
 }) {
+  const tweets = Array.isArray(content) ? content : [content];
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editMode, setEditMode] = useState<EditMode>("annotate");
@@ -1271,7 +1594,7 @@ function ThreadCard({
     const textToCopy =
       editMode === "edit" && editedTweets.length > 0
         ? editedTweets.join("\n\n---\n\n")
-        : content.join("\n\n---\n\n");
+        : tweets.join("\n\n---\n\n");
     await navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -1280,7 +1603,7 @@ function ThreadCard({
   const handleEdit = () => {
     setIsEditing(true);
     setEditMode("annotate");
-    setEditedTweets([...content]);
+    setEditedTweets([...tweets]);
     setTweetAnnotations(new Map());
   };
 
@@ -1334,7 +1657,7 @@ function ThreadCard({
     setEditedTweets(newTweets);
   };
 
-  const hasEditChanges = editedTweets.some((t, i) => t !== content[i]);
+  const hasEditChanges = editedTweets.some((t, i) => t !== tweets[i]);
   const totalAnnotations = getTotalAnnotations();
   const canRegenerate =
     editMode === "annotate" ? totalAnnotations > 0 : hasEditChanges;
@@ -1454,7 +1777,7 @@ function ThreadCard({
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-2 mb-3">
             <span className="inline-block text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
-              Thread ({content.length} tweets)
+              Thread ({tweets.length} tweets)
             </span>
             <div className="flex items-center gap-1">
               {isEditing ? (
@@ -1520,6 +1843,33 @@ function ThreadCard({
             </div>
           </div>
 
+          <ViralityRow score={viralityScore} notes={viralityNotes} />
+
+          {healthImpact && healthImpact.length > 0 && (
+            <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+              <div className="font-medium text-foreground">Health impact</div>
+              {healthImpact.slice(0, 2).map((item, idx) => (
+                <div key={`${item.metric}-${idx}`} className="flex gap-2">
+                  <span className="font-medium text-foreground">
+                    {item.delta >= 0 ? "+" : ""}
+                    {Math.round(item.delta * 100)}%
+                  </span>
+                  <span className="capitalize">{item.metric.replace("_", " ")}</span>
+                  <span>— {item.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {followupFormats && followupFormats.length > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">
+                Follow-up formats:
+              </span>{" "}
+              {followupFormats.slice(0, 3).join(", ")}
+            </div>
+          )}
+
           {isEditing && (
             <div className="mb-3 space-y-2">
               {/* Mode Toggle */}
@@ -1558,7 +1908,7 @@ function ThreadCard({
           )}
 
           <div className="space-y-3">
-            {content.map((tweet, i) => {
+            {tweets.map((tweet, i) => {
               const annotations = tweetAnnotations.get(i) || [];
               const segments = getTextSegments(tweet, annotations);
 
@@ -1568,7 +1918,7 @@ function ThreadCard({
                     <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
                       {i + 1}
                     </div>
-                    {i < content.length - 1 && (
+                    {i < tweets.length - 1 && (
                       <div className="w-0.5 flex-1 bg-border mt-1" />
                     )}
                   </div>

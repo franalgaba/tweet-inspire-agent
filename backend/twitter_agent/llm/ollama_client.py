@@ -295,6 +295,7 @@ Write exactly 5 sentences. Each sentence should be substantial and informative:"
         original_tweet_context: Optional[str] = None,
         thread_count: Optional[int] = None,
         vibe: Optional[str] = None,
+        engagement_strategy: Optional[str] = None,
     ) -> str:
         """
         Generate Twitter content based on voice analysis and context.
@@ -309,6 +310,7 @@ Write exactly 5 sentences. Each sentence should be substantial and informative:"
             original_tweet_context: Optional context of original tweet (for replies/quotes)
             thread_count: Number of tweets in thread (only used when content_type is "thread")
             vibe: Optional vibe/mood description for the generated content (e.g., "positive and excited", "skeptical")
+            engagement_strategy: Optional engagement strategy guidance to optimize reach
 
         Returns:
             Generated content (single tweet or thread)
@@ -376,6 +378,10 @@ CRITICAL RULES:
             )
         if calendar_hints:
             context_parts.append(f"Calendar/scheduling hints:\n{calendar_hints}")
+        if engagement_strategy:
+            context_parts.append(
+                f"ENGAGEMENT STRATEGY (optimize reach without bait):\n{engagement_strategy}"
+            )
 
         context_text = (
             "\n\n".join(context_parts)

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional, Generator, Any
 
 from twitter_agent.analysis.content_generator import ContentGenerator
+from twitter_agent.analysis.profile_health import score_profile_health
 from twitter_agent.analysis.voice_analyzer import VoiceAnalyzer
 from twitter_agent.clients.twitter import TwitterAPIClient
 from twitter_agent.llm.ollama_client import OllamaClient
@@ -73,6 +74,62 @@ def analyze_voice(
             twitter_client.close()
         if ollama_client:
             ollama_client.close()
+
+
+def analyze_profile_health(
+    username: str,
+    profile_file: Optional[str] = None,
+    max_tweets: int = 200,
+    prefer_cache_only: bool = False,
+) -> dict:
+    """
+    Analyze profile health and provide recommendations.
+
+    Returns:
+        Dictionary with scores, metrics, and recommendations
+    """
+    config = get_config()
+    if not config["twitter_api_key"]:
+        raise ValueError("TWITTER_API_KEY environment variable not set")
+
+    twitter_client = None
+    voice_profile = None
+
+    try:
+        twitter_client = TwitterAPIClient(api_key=config["twitter_api_key"])
+
+        user_info = twitter_client.get_user_info(username)
+        tweets = twitter_client.get_user_tweets(
+            username,
+            max_results=max_tweets,
+            prefer_cache_only=prefer_cache_only,
+        )
+
+        if profile_file:
+            profile_path = Path(profile_file)
+            if not profile_path.exists():
+                raise FileNotFoundError(f"Profile file not found: {profile_file}")
+            profile_data = json.loads(profile_path.read_text())
+            voice_profile = VoiceProfile(**profile_data)
+
+        result = score_profile_health(
+            username=username,
+            tweets=tweets,
+            user_info=user_info,
+            voice_profile=voice_profile,
+        )
+
+        return {
+            "username": result.username,
+            "overall_score": result.overall_score,
+            "scores": result.scores,
+            "metrics": result.metrics,
+            "recommendations": result.recommendations,
+            "steps": result.steps,
+        }
+    finally:
+        if twitter_client:
+            twitter_client.close()
 
 
 def generate_content(

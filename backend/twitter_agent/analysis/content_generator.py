@@ -8,7 +8,10 @@ from twitter_agent.llm.ollama_client import OllamaClient
 from twitter_agent.models.schemas import ContentProposal, ContentType, VoiceProfile
 from twitter_agent.utils.analytics import AnalyticsProcessor
 from twitter_agent.utils.calendar import CalendarProcessor
+from twitter_agent.utils.engagement_strategy import get_engagement_strategy
 from twitter_agent.utils.file_processor import FileProcessor
+from twitter_agent.utils.health_impact import estimate_health_impact
+from twitter_agent.utils.virality import ViralityScorer
 
 
 class ContentGenerator:
@@ -37,6 +40,7 @@ class ContentGenerator:
         self.file_processor = file_processor
         self.analytics_processor = analytics_processor
         self.calendar_processor = calendar_processor
+        self.virality_scorer = ViralityScorer()
 
     def generate(
         self,
@@ -49,6 +53,7 @@ class ContentGenerator:
         original_tweet_context: Optional[str] = None,
         thread_count: int = 5,
         vibe: Optional[str] = None,
+        optimize_virality: bool = True,
     ) -> list[ContentProposal]:
         """
         Generate content proposals.
@@ -63,6 +68,7 @@ class ContentGenerator:
             original_tweet_context: Optional context of original tweet (for replies/quotes)
             thread_count: Number of tweets in a thread (only used when content_type is THREAD)
             vibe: Optional vibe/mood description for the generated content (e.g., "positive and excited", "skeptical")
+            optimize_virality: Whether to score and rank proposals by virality
 
         Returns:
             List of ContentProposal objects
@@ -92,6 +98,7 @@ class ContentGenerator:
 
         # Generate voice analysis summary
         voice_summary = self._format_voice_profile()
+        engagement_strategy = get_engagement_strategy(content_type)
 
         # Generate proposals
         for i in range(count):
@@ -107,10 +114,17 @@ class ContentGenerator:
                 original_tweet_context=original_tweet_context,
                 thread_count=thread_count if content_type == ContentType.THREAD else None,
                 vibe=vibe,
+                engagement_strategy=engagement_strategy,
             )
 
             # Parse generated content (handle threads)
             content = self._parse_generated_content(generated_text, content_type)
+            virality_result = self.virality_scorer.score(content, content_type)
+            health_impact = estimate_health_impact(
+                content=content,
+                content_type=content_type,
+                virality_components=virality_result.components,
+            )
 
             # Determine suggested date from calendar
             suggested_date = None
@@ -132,11 +146,22 @@ class ContentGenerator:
                 content_type=content_type,
                 content=content,
                 suggested_date=suggested_date,
-                rationale=f"Generated based on voice analysis and {', '.join(based_on)}",
+                rationale=(
+                    f"Generated based on voice analysis and {', '.join(based_on)}; "
+                    "optimized for engagement signals"
+                ),
                 based_on=based_on,
+                virality_score=virality_result.score,
+                virality_breakdown=virality_result.components,
+                virality_notes=virality_result.notes,
+                health_impact=health_impact.impacts,
+                followup_formats=health_impact.followups,
             )
 
             proposals.append(proposal)
+
+        if optimize_virality and len(proposals) > 1:
+            proposals.sort(key=lambda p: p.virality_score or 0.0, reverse=True)
 
         return proposals
 
@@ -287,4 +312,3 @@ class ContentGenerator:
                     if line and not line[0].isdigit():
                         return line
             return text
-

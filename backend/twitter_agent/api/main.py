@@ -9,6 +9,7 @@ from twitter_agent.api.config import Settings
 from twitter_agent.api.routers import (
     cache_router,
     generate_router,
+    health_router,
     history_router,
     inspire_router,
 )
@@ -61,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(generate_router, prefix="/api")
     app.include_router(cache_router, prefix="/api")
     app.include_router(history_router, prefix="/api")
+    app.include_router(health_router, prefix="/api")
 
     @app.get("/health")
     async def health():

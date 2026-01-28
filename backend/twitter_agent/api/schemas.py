@@ -109,6 +109,26 @@ class CheckResponse(BaseModel):
     errors: Optional[list[str]] = None
 
 
+class HealthRequest(BaseModel):
+    """Request schema for profile health endpoint."""
+
+    username: str
+    profile_file: Optional[str] = None
+    max_tweets: int = 200
+    prefer_cache_only: bool = False
+
+
+class HealthResponse(BaseModel):
+    """Response schema for profile health endpoint."""
+
+    username: str
+    overall_score: float
+    scores: dict[str, float]
+    metrics: dict[str, Any]
+    recommendations: list[dict[str, Any]]
+    steps: list[str]
+
+
 class CacheInfoResponse(BaseModel):
     """Response schema for cache info endpoint."""
 
@@ -146,4 +166,3 @@ class HistoryEntryResponse(BaseModel):
     """Response schema for single history entry."""
 
     entry: dict[str, Any]
-
